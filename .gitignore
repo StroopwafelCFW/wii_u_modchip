@@ -1,0 +1,9 @@
+glitch_and_exi/*.asc
+glitch_and_exi/*.bin
+glitch_and_exi/*.json
+glitch_and_exi/*.log
+
+log*.txt
+golden.txt
+
+.DS_Store
