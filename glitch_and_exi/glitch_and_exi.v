@@ -163,7 +163,7 @@ module top (
 
 			WIIU_DEBUG_HISTORY_LEN <= WIIU_DEBUG_HISTORY_LEN + 9;
 		end
-		else if ((WIIU_DEBUG != LAST_WIIU_DEBUG || (buffer_btn2 && !last_buffer_btn2))) begin
+		else if ((WIIU_DEBUG != LAST_WIIU_DEBUG || (buffer_btn2 && !last_buffer_btn2)) && !BTN3) begin
 			WIIU_DEBUG_HISTORY <= WIIU_DEBUG_HISTORY | (WIIU_DEBUG << (8*WIIU_DEBUG_HISTORY_LEN));
 			WIIU_DEBUG_HISTORY_LEN <= WIIU_DEBUG_HISTORY_LEN + 1;
 			LAST_WIIU_DEBUG <= WIIU_DEBUG;
@@ -171,25 +171,15 @@ module top (
 			// 0x25 and 0x88 are our winners.
 			// Everything else is just on the off chance that the pins
 			// float to 0x88 or 0x25 during reset or booting.
-			if (WIIU_DEBUG == 8'h88) begin
+			if (WIIU_DEBUG == 8'h88
+				|| WIIU_DEBUG == 8'h25) begin
 				perma_stop_reset <= 1;
 			end
-			if (WIIU_DEBUG == 8'h25) begin
-				perma_stop_reset <= 1;
-			end
-			else if (WIIU_DEBUG == 8'hc3) begin
-				perma_stop_reset <= 0;
-			end
-			else if (WIIU_DEBUG == 8'hda) begin
-				perma_stop_reset <= 0;
-			end
-			else if (WIIU_DEBUG == 8'he1) begin
-				perma_stop_reset <= 0;
-			end
-			else if (WIIU_DEBUG == 8'h0d) begin
-				perma_stop_reset <= 0;
-			end
-			else if (WIIU_DEBUG == 8'h1d) begin
+			else if (WIIU_DEBUG == 8'hc3
+					 || WIIU_DEBUG == 8'hda 
+					 || WIIU_DEBUG == 8'he1 
+					 || WIIU_DEBUG == 8'h0d 
+					 || WIIU_DEBUG == 8'h1d) begin
 				perma_stop_reset <= 0;
 			end
 		end else begin
@@ -256,7 +246,7 @@ module top (
 		end
 
 		// Manual reset hold on BTN3, plus reset counter
-		if (BTN3 && !glitch_counter) begin
+		if (BTN3) begin
 			reset_trigger <= 1;
 			perma_stop_reset <= 0;
 			//glitch_counter <= GLITCH_DELAY + glitch_len_iter;
@@ -268,20 +258,6 @@ module top (
 		else begin
 			reset_trigger <= 0;
 		end
-
-		// Glitch counter trigger
-		if (glitch_counter) begin
-			glitch_counter <= glitch_counter - 1;
-			if (glitch_counter <= glitch_len_iter) begin
-				glitch_trigger <= 1;
-			end else begin
-				glitch_trigger <= 0;
-			end
-		end
-		else begin
-			glitch_trigger <= 0;
-		end
-
 
 		// Emulate my button bouncing
 		if (button_delay_0) begin
@@ -334,7 +310,6 @@ module top (
 	// My p-channel MOSFET is crusty and slow, so we trigger earlier than we should.
 	// Nominally, this would trigger after 64ish clocks, so that the 03030303 check
 	// passes and the next read is just FFs.
-	assign P1B2 = (glitch_trigger && !perma_stop_reset) ? 1'bz : 1'b1;
 	assign P1B3 = (exi_clk_cnt > 16'h20 && exi_clk_cnt < 16'h80) ? 1'bz : 1'b1;//exi_dat_tmp; //
-	//assign P1B8 = 0;//(exi_clk_cnt > 8'h20);
+
 endmodule
