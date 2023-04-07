@@ -55,14 +55,15 @@ module top (
 	// DELAY_0 - This offset is super long so that when delay_2 wraps back, 
 	//           it has enough time to check success.
 	// DELAY_1 - This offset is arbitrary, this will be the reset which delay_2
-	//           is glitching.
+	//           is glitching off of. The only requirement seems to be that this
+	//			 reset completely loads OTP? ie, 727 works here, 726 does not?
 	// DELAY_2 - This is cycle-precise offset to the fuse reading. It's odd, though,
 	//           for some reason increasing the value moves earlier in time?
 	//			 It also doesn't seem to be dependent on RESET_DURATION??
 	localparam DELAY_0 = 24'hF0000;
-	localparam DELAY_1 = 16'h5FFF;
+	localparam DELAY_1 = 16'h3FFF;
 	localparam DELAY_2 = 16'h726;
-	localparam DELAY_1_MAX = 16'h6000;
+	localparam DELAY_1_MAX = 16'h4000;
 	localparam DELAY_2_MAX = 16'h727;
 
 	// "NDEV_LED" GPIOs
