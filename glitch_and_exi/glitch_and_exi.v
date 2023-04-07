@@ -40,20 +40,30 @@ module top (
 	localparam GLITCH_DELAY = 16'h001; // 10
 	localparam GLITCH_LEN = 16'h180;
 
+	// 726 = 0x0 bytes of OTP loaded, but JTAG fuse is unloaded!
+	// 720 = 0x0 bytes of OTP loaded, but JTAG fuse is still loaded.
+	// 710 = ~0x8 bytes of OTP loaded
+	// 6B0 = ~0x40 bytes of OTP loaded
+	// 690 = ~0x50 bytes of OTP loaded,
+	// 669 = ~0x60 bytes of OTP loaded, 
+	// 638 = ~0x80 bytes loaded, 
+	// 634 it starts to load 0x80 and fail
+
 	// Magic numbers, emulates my BTN1 bounce
 	localparam DELAY_0 = 24'hF0000;
 	localparam DELAY_1 = 16'h6F4E;
-	localparam DELAY_2 = 16'h668;
+	localparam DELAY_2 = 16'h726;
 	localparam DELAY_1_MAX = 16'h7000;
-	localparam DELAY_2_MAX = 16'h700;
+	localparam DELAY_2_MAX = 16'h727;
 
 	// "NDEV_LED" GPIOs
-	wire [7:0] WIIU_DEBUG;
-	assign WIIU_DEBUG = {P1A10, P1A9, P1A8, P1A7, P1A4, P1A3, P1A2, P1A1};
+	wire [7:0] WIIU_DEBUG_LIVE;
+	assign WIIU_DEBUG_LIVE = {P1A10, P1A9, P1A8, P1A7, P1A4, P1A3, P1A2, P1A1};
+	reg [7:0] WIIU_DEBUG = 8'hAA;
 	reg [7:0] LAST_WIIU_DEBUG = 8'h55;
 
 	// UART queue
-	reg [511:0] WIIU_DEBUG_HISTORY;
+	reg [1023:0] WIIU_DEBUG_HISTORY;
 	reg [7:0] WIIU_DEBUG_HISTORY_LEN;
 	reg perma_stop_reset = 0;
 
@@ -111,12 +121,19 @@ module top (
 	//reg [63:0] exi_dat = 0;
 	//reg [127:0] exi_dat_in = 128'h0;
 	reg glitch_trigger = 0;
+	reg is_serial = 0;
+	reg [3:0] serial_bits;
+	reg [7:0] serial_byte;
+	reg got_bit = 0;
+	reg last_bit7 = 0;
 
 	always @(posedge CLK) begin
 		buffer_btn1 <= BTN1;
 		last_buffer_btn1 <= buffer_btn1;
 		buffer_btn2 <= BTN2;
 		last_buffer_btn2 <= buffer_btn2;
+
+		WIIU_DEBUG <= WIIU_DEBUG_LIVE;
 
 		button_bounce <= button_bounce + 1;
 
@@ -163,7 +180,63 @@ module top (
 
 			WIIU_DEBUG_HISTORY_LEN <= WIIU_DEBUG_HISTORY_LEN + 9;
 		end
-		else if ((WIIU_DEBUG != LAST_WIIU_DEBUG || (buffer_btn2 && !last_buffer_btn2)) && !BTN3) begin
+		else if (is_serial && (WIIU_DEBUG != LAST_WIIU_DEBUG) && !BTN3) begin
+			if (WIIU_DEBUG[7] && !LAST_WIIU_DEBUG[7] && ((WIIU_DEBUG & 8'h7E) == 8'h00)) begin
+				if (serial_bits <= 7)  begin
+					serial_byte <= (serial_byte << 1) | WIIU_DEBUG[0];
+					serial_bits <= serial_bits + 1;
+
+					WIIU_DEBUG_HISTORY <= WIIU_DEBUG_HISTORY;
+					WIIU_DEBUG_HISTORY_LEN <= WIIU_DEBUG_HISTORY_LEN;
+					//WIIU_DEBUG_HISTORY <= WIIU_DEBUG_HISTORY | (((serial_byte << 1) | WIIU_DEBUG[0]) << (8*WIIU_DEBUG_HISTORY_LEN));
+					//WIIU_DEBUG_HISTORY_LEN <= WIIU_DEBUG_HISTORY_LEN + 1;
+
+					got_bit <= 1;
+				end
+			end
+			else if (WIIU_DEBUG == 8'h8F && serial_bits >= 8) begin
+				WIIU_DEBUG_HISTORY <= WIIU_DEBUG_HISTORY | (serial_byte << (8*WIIU_DEBUG_HISTORY_LEN));
+				WIIU_DEBUG_HISTORY_LEN <= WIIU_DEBUG_HISTORY_LEN + 1;
+
+				got_bit <= 0;
+
+				serial_byte <= 0;
+				serial_bits <= 0;
+			end
+			else if (WIIU_DEBUG == 8'h8F && serial_bits < 8) begin
+				
+				got_bit <= 0;
+
+				serial_byte <= 0;
+				serial_bits <= 0;
+			end
+			else begin
+				WIIU_DEBUG_HISTORY <= WIIU_DEBUG_HISTORY;
+				WIIU_DEBUG_HISTORY_LEN <= WIIU_DEBUG_HISTORY_LEN;
+				got_bit <= 0;
+			end
+
+			
+			LAST_WIIU_DEBUG <= WIIU_DEBUG;
+
+			// We're looking for 0x8F to signal end of serial transmission.
+			if (WIIU_DEBUG == 8'h25) begin
+				//perma_stop_reset <= 1;
+				//is_serial <= 0;
+			end
+			else if (WIIU_DEBUG == 8'h8F && LAST_WIIU_DEBUG == 8'h0F) begin
+				//is_serial <= 0;
+			end
+			else if (WIIU_DEBUG == 8'hc3
+					 || WIIU_DEBUG == 8'hda 
+					 || WIIU_DEBUG == 8'he1 
+					 || WIIU_DEBUG == 8'h0d 
+					 || WIIU_DEBUG == 8'h1d) begin
+				//perma_stop_reset <= 0;
+				//is_serial <= 0;
+			end
+		end 
+		else if (!is_serial && (WIIU_DEBUG != LAST_WIIU_DEBUG || (buffer_btn2 && !last_buffer_btn2)) && !BTN3) begin
 			WIIU_DEBUG_HISTORY <= WIIU_DEBUG_HISTORY | (WIIU_DEBUG << (8*WIIU_DEBUG_HISTORY_LEN));
 			WIIU_DEBUG_HISTORY_LEN <= WIIU_DEBUG_HISTORY_LEN + 1;
 			LAST_WIIU_DEBUG <= WIIU_DEBUG;
@@ -174,6 +247,10 @@ module top (
 			if (WIIU_DEBUG == 8'h88
 				|| WIIU_DEBUG == 8'h25) begin
 				perma_stop_reset <= 1;
+				is_serial <= 0;
+			end
+			else if (WIIU_DEBUG == 8'h8F && LAST_WIIU_DEBUG == 8'h0F) begin
+				is_serial <= 1; // We're looking for 0x8F to signal start of serial transmission.
 			end
 			else if (WIIU_DEBUG == 8'hc3
 					 || WIIU_DEBUG == 8'hda 
@@ -181,6 +258,7 @@ module top (
 					 || WIIU_DEBUG == 8'h0d 
 					 || WIIU_DEBUG == 8'h1d) begin
 				perma_stop_reset <= 0;
+				is_serial <= 0;
 			end
 		end else begin
 			//LAST_WIIU_DEBUG <= WIIU_DEBUG;
@@ -248,6 +326,7 @@ module top (
 		// Manual reset hold on BTN3, plus reset counter
 		if (BTN3) begin
 			reset_trigger <= 1;
+			is_serial <= 0;
 			perma_stop_reset <= 0;
 			//glitch_counter <= GLITCH_DELAY + glitch_len_iter;
 		end
