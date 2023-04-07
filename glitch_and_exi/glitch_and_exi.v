@@ -35,11 +35,13 @@ module top (
 	//localparam baud = 57600;
 	localparam baud = 1000000;
 
+	localparam RESET_DURATION = 16'h10;
 	localparam GLITCH_LEN_ROLLOVER = 16'h101;
 	localparam GLITCH_ROLLOVER = 16'h300;
 	localparam GLITCH_DELAY = 16'h001; // 10
 	localparam GLITCH_LEN = 16'h180;
 
+	// 727 = OTP is not loading at all
 	// 726 = 0x0 bytes of OTP loaded, but JTAG fuse is unloaded!
 	// 720 = 0x0 bytes of OTP loaded, but JTAG fuse is still loaded.
 	// 710 = ~0x8 bytes of OTP loaded
@@ -50,10 +52,17 @@ module top (
 	// 634 it starts to load 0x80 and fail
 
 	// Magic numbers, emulates my BTN1 bounce
+	// DELAY_0 - This offset is super long so that when delay_2 wraps back, 
+	//           it has enough time to check success.
+	// DELAY_1 - This offset is arbitrary, this will be the reset which delay_2
+	//           is glitching.
+	// DELAY_2 - This is cycle-precise offset to the fuse reading. It's odd, though,
+	//           for some reason increasing the value moves earlier in time?
+	//			 It also doesn't seem to be dependent on RESET_DURATION??
 	localparam DELAY_0 = 24'hF0000;
-	localparam DELAY_1 = 16'h6F4E;
+	localparam DELAY_1 = 16'h5FFF;
 	localparam DELAY_2 = 16'h726;
-	localparam DELAY_1_MAX = 16'h7000;
+	localparam DELAY_1_MAX = 16'h6000;
 	localparam DELAY_2_MAX = 16'h727;
 
 	// "NDEV_LED" GPIOs
@@ -305,7 +314,7 @@ module top (
 			button_bounce <= 0;
 
 			//perma_stop_reset <= 0;
-			reset_counter <= 16'h200;
+			reset_counter <= RESET_DURATION;
 			glitch_counter <= glitch_counter_iter;//8'h0; // interesting thresholds: 0x7c -> boot1 fails to start
 			if (glitch_counter_iter < GLITCH_ROLLOVER + glitch_len_iter) begin
 				glitch_counter_iter <= glitch_counter_iter + 1;
