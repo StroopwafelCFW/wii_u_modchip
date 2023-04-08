@@ -55,6 +55,12 @@ while True:
           elif is_serial:
                serial_data += [data[0]]
                hex_dump (serial_data)
+               if serial_data[-8:] == [0x55, 0xaa, 0x55, 0xaa, 0x55, 0xaa, 0x55, 0xaa]:
+                    serial_data = []
+               if serial_data[-2:] == [0x20, 0x25]:
+                    serial_data = []
+               if serial_data[-2:] == [0xaa, 0x55] and len(serial_data) > 9 and serial_data[-9] == 0x55:
+                    serial_data = []
 
      except FtdiError as e:
           print(e)
