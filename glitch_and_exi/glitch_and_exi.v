@@ -50,6 +50,11 @@ module top (
 	// 669 = ~0x60 bytes of OTP loaded, 
 	// 638 = ~0x80 bytes loaded, 
 	// 634 it starts to load 0x80 and fail
+	// 20D is when boot1 key is loaded, all in one cycle??
+	// B0 - begin boot1 fuse
+	// 90 - boot1 is loading
+	// OTP bytes are loaded in the following order, in u32s:
+	// [fourth] [third] [second] [first]
 
 	// Magic numbers, emulates my BTN1 bounce
 	// DELAY_0 - This offset is super long so that when delay_2 wraps back, 
@@ -60,11 +65,13 @@ module top (
 	// DELAY_2 - This is cycle-precise offset to the fuse reading. It's odd, though,
 	//           for some reason increasing the value moves earlier in time?
 	//			 It also doesn't seem to be dependent on RESET_DURATION??
-	localparam DELAY_0 = 24'hF0000;
-	localparam DELAY_1 = 16'h3FFF;
-	localparam DELAY_2 = 16'h726;
-	localparam DELAY_1_MAX = 16'h4000;
-	localparam DELAY_2_MAX = 16'h727;
+	//
+	// Normally I'd like Full Access™, but the JTAG fuse at 00 instead of E1 
+	// causes uvd.rpl to error on H264 decoding. So 0x724 it is, lol
+	localparam DELAY_0 = 24'h100000;
+	localparam DELAY_1 = 16'h1FFF;
+	localparam DELAY_2 = 16'h635;
+	localparam DELAY_1_MAX = 16'h2000;
 
 	// "NDEV_LED" GPIOs
 	wire [7:0] WIIU_DEBUG_LIVE;
@@ -105,7 +112,7 @@ module top (
 
 	// Button bounce emulation
 	reg [15:0] button_delay_1_inc = DELAY_1;
-	reg [15:0] button_delay_2_inc = DELAY_2;
+	//reg [15:0] button_delay_2_inc = DELAY_2;
 	reg [23:0] button_delay_0 = 0;
 	reg [15:0] button_delay_1 = 0;
 	reg [15:0] button_delay_2 = 0;
@@ -186,7 +193,7 @@ module top (
 
 			//WIIU_DEBUG_HISTORY <= (WIIU_DEBUG_HISTORY << 72) | (16'h55aa << 56) | (glitch_counter_iter[15:0] << 40) | (button_delay_1_inc[15:0] << 24) | (button_delay_2_inc[15:0] << 8) | 8'h55;
 
-			WIIU_DEBUG_HISTORY <= (WIIU_DEBUG_HISTORY << 72) | (16'h55aa << 56) | (last_button_bounce_3[15:0] << 40) | (last_button_bounce_2[15:0] << 24) | (last_button_bounce[15:0] << 8) | 8'h55;
+			WIIU_DEBUG_HISTORY <= (WIIU_DEBUG_HISTORY << 72) | (16'h55aa << 56) | (exi_clk_cnt[15:0] << 40) | (exi_clk_cnt[15:0] << 24) | (exi_clk_cnt[15:0] << 8) | 8'h55;
 
 			WIIU_DEBUG_HISTORY_LEN <= WIIU_DEBUG_HISTORY_LEN + 9;
 		end
@@ -232,7 +239,7 @@ module top (
 			// We're looking for 0x8F to signal end of serial transmission.
 			if (WIIU_DEBUG == 8'h25) begin
 				//perma_stop_reset <= 1;
-				//is_serial <= 0;
+				is_serial <= 0;
 			end
 			else if (WIIU_DEBUG == 8'h8F && LAST_WIIU_DEBUG == 8'h0F) begin
 				//is_serial <= 0;
@@ -245,6 +252,10 @@ module top (
 				//perma_stop_reset <= 0;
 				//is_serial <= 0;
 			end
+
+			if (buffer_btn2 && !last_buffer_btn2) begin
+				is_serial <= 0;
+			end
 		end 
 		else if (!is_serial && (WIIU_DEBUG != LAST_WIIU_DEBUG || (buffer_btn2 && !last_buffer_btn2)) && !BTN3) begin
 			WIIU_DEBUG_HISTORY <= WIIU_DEBUG_HISTORY | (WIIU_DEBUG << (8*WIIU_DEBUG_HISTORY_LEN));
@@ -254,8 +265,7 @@ module top (
 			// 0x25 and 0x88 are our winners.
 			// Everything else is just on the off chance that the pins
 			// float to 0x88 or 0x25 during reset or booting.
-			if (WIIU_DEBUG == 8'h88
-				|| WIIU_DEBUG == 8'h25) begin
+			if (WIIU_DEBUG == 8'h88) begin // || WIIU_DEBUG == 8'h25
 				perma_stop_reset <= 1;
 				is_serial <= 0;
 			end
@@ -349,11 +359,10 @@ module top (
 		end
 
 		// Emulate my button bouncing
-		if (button_delay_0) begin
-			if (button_delay_0 == 1) begin
-				buffer_btn1 <= 1;
-			end
-			button_delay_0 <= button_delay_0 - 1;
+		if (BTN3) begin
+			button_delay_0 <= DELAY_0;
+			button_delay_1 <= button_delay_1_inc;
+			button_delay_2 <= DELAY_2;
 		end
 		else if (button_delay_1) begin
 			if (button_delay_1 == 1) begin
@@ -367,22 +376,23 @@ module top (
 			end
 			button_delay_2 <= button_delay_2 - 1;
 		end
+		else if (button_delay_0) begin
+			if (button_delay_0 == 1) begin
+				buffer_btn1 <= 1;
+			end
+			button_delay_0 <= button_delay_0 - 1;
+		end
 		else begin
 			button_delay_0 <= DELAY_0;
-			if (button_delay_1_inc > DELAY_1_MAX) begin
+			if (button_delay_1_inc > DELAY_1+1) begin
 				button_delay_1_inc <= DELAY_1;
-				button_delay_2_inc <= button_delay_2_inc + 1;
 			end
 			else begin
 				button_delay_1_inc <= button_delay_1_inc + 1;
 			end
 
-			if (button_delay_2_inc > DELAY_2_MAX) begin
-				button_delay_2_inc <= DELAY_2;
-			end
-
-			button_delay_1 <= button_delay_1_inc;
-			button_delay_2 <= button_delay_2_inc;			
+			button_delay_2 <= DELAY_2;
+			button_delay_1 <= button_delay_1_inc;	
 		end
 
 	end
@@ -398,7 +408,7 @@ module top (
 	// Force UNSTBL_PWR on boot:
 	// My p-channel MOSFET is crusty and slow, so we trigger earlier than we should.
 	// Nominally, this would trigger after 64ish clocks, so that the 03030303 check
-	// passes and the next read is just FFs.
-	assign P1B3 = (exi_clk_cnt > 16'h20 && exi_clk_cnt < 16'h80) ? 1'bz : 1'b1;//exi_dat_tmp; //
+	// passes and the next read is just FFs. // 
+	assign P1B3 = (exi_clk_cnt > 16'h10 && exi_clk_cnt < 16'h80) ? 1'bz : 1'b1;//exi_dat_tmp; //
 
 endmodule

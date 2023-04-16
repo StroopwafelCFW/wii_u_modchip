@@ -1,0 +1,15 @@
+// View at wavedrom.com
+{
+  signal: [
+    {name: 'NRST', wave: '10|1...|0.|1..|0|1...'},
+    {node: '........A..B...C.D...E'},
+    {node: '...Z....G..H...I.J...K'}
+  ],
+  edge: [
+    'Z+G at least 67814ns (full OTP load)',
+    'A+B xx ns (any)',
+    'H+I 58852ns ~ 67777ns',
+    'C+D xx ns',
+    'J+K de_Fused boot',
+  ]
+}
