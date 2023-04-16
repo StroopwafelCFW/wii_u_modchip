@@ -5,6 +5,7 @@ module top (
 
 	// UART
 	output TX,
+	input RX,
 
 	output LED1,
 	output LED2,
@@ -20,11 +21,14 @@ module top (
 	output LEDR_N,
 	output LEDG_N,
 
-	// Unused for now.
-	input P1A1, P1A2, P1A3, P1A4, P1A7, P1A8, P1A9, P1A10,
+	// NDEV_LED/DEBUG
+	inout P1A9,
+	input P1A1, P1A3, P1A4, P1A7, P1A8, P1A2, P1A10,
+
+	// Unused for now
 	input P1B4, P1B8, P1B9, P1B10,
 
-	output P1B1, // reset trigger
+	inout P1B1, // reset trigger
 	inout P1B2, P1B3, // glitch mosfet trigger, EXI mosfet
 	input P1B7, // exi clk
 );
@@ -75,12 +79,21 @@ module top (
 
 	// "NDEV_LED" GPIOs
 	wire [7:0] WIIU_DEBUG_LIVE;
+	assign P1A9 = is_serial ? wiiu_tx : 1'bz;
 	assign WIIU_DEBUG_LIVE = {P1A10, P1A9, P1A8, P1A7, P1A4, P1A3, P1A2, P1A1};
 	reg [7:0] WIIU_DEBUG = 8'hAA;
 	reg [7:0] LAST_WIIU_DEBUG = 8'h55;
+	reg wiiu_tx = 1'b0;
+	reg [7:0] wiiu_tx_byte = 8'b0;
+	wire wiiu_nrst;
+	assign wiiu_nrst = P1B1;
+	reg wiiu_nrst_read = 1'b1;
+	reg last_wiiu_nrst_read = 1'b1;
 
 	// UART queue
-	reg [1023:0] WIIU_DEBUG_HISTORY;
+	reg [511:0] uart_rx_queue;
+	reg [7:0] uart_rx_queue_len;
+	reg [511:0] WIIU_DEBUG_HISTORY;
 	reg [7:0] WIIU_DEBUG_HISTORY_LEN;
 	reg perma_stop_reset = 0;
 
@@ -96,6 +109,15 @@ module top (
 		.tx_data(tx1_data),
 		.tx(TX),
 		.tx_busy(tx1_busy)
+	);
+
+	reg rx1_ready;
+	reg [7:0] rx1_data;
+	uart_rx #(clk_freq, baud) urx1 (
+		.clk(clk_12mhz),
+		.rx(RX),
+		.rx_ready(rx1_ready),
+		.rx_data(rx1_data),
 	);
 
 	reg buffer_btn1;
@@ -150,6 +172,9 @@ module top (
 		buffer_btn2 <= BTN2;
 		last_buffer_btn2 <= buffer_btn2;
 
+		wiiu_nrst_read <= perma_stop_reset ? wiiu_nrst : 1'b1;
+		last_wiiu_nrst_read <= wiiu_nrst_read;
+
 		WIIU_DEBUG <= WIIU_DEBUG_LIVE;
 
 		button_bounce <= button_bounce + 1;
@@ -186,7 +211,12 @@ module top (
 		// We either push count info to WIIU_DEBUG_HISTORY,
 		// a changed value to WIIU_DEBUG_HISTORY,
 		// or we shift one value off.
-		if (last_glitch_counter_iter != glitch_counter_iter && !perma_stop_reset) begin
+		// UART reading
+		if (rx1_ready) begin
+			uart_rx_queue <= uart_rx_queue | (rx1_data << (8*uart_rx_queue_len));
+			uart_rx_queue_len <= uart_rx_queue_len + 1;
+		end
+		else if (last_glitch_counter_iter != glitch_counter_iter && !perma_stop_reset) begin
 			//WIIU_DEBUG_HISTORY <= (WIIU_DEBUG_HISTORY << 104) | (glitch_counter_iter[15:0] << 72) | (16'h55aa << 88) | (exi_clk_cnt << 8) | 8'h55;
 			//WIIU_DEBUG_HISTORY_LEN <= WIIU_DEBUG_HISTORY_LEN + 13;
 
@@ -197,11 +227,14 @@ module top (
 
 			WIIU_DEBUG_HISTORY_LEN <= WIIU_DEBUG_HISTORY_LEN + 9;
 		end
-		else if (is_serial && (WIIU_DEBUG != LAST_WIIU_DEBUG) && !BTN3) begin
-			if (WIIU_DEBUG[7] && !LAST_WIIU_DEBUG[7] && ((WIIU_DEBUG & 8'h7E) == 8'h00)) begin
+		else if (is_serial && (WIIU_DEBUG != LAST_WIIU_DEBUG) && !(BTN3 || (!wiiu_nrst_read && last_wiiu_nrst_read))) begin
+			if (WIIU_DEBUG[7] && !LAST_WIIU_DEBUG[7] && ((WIIU_DEBUG & 8'h3E) == 8'h00)) begin
 				if (serial_bits <= 7)  begin
 					serial_byte <= (serial_byte << 1) | WIIU_DEBUG[0];
 					serial_bits <= serial_bits + 1;
+
+					wiiu_tx <= wiiu_tx_byte[7];
+					wiiu_tx_byte <= wiiu_tx_byte << 1;
 
 					WIIU_DEBUG_HISTORY <= WIIU_DEBUG_HISTORY;
 					WIIU_DEBUG_HISTORY_LEN <= WIIU_DEBUG_HISTORY_LEN;
@@ -211,16 +244,22 @@ module top (
 					got_bit <= 1;
 				end
 			end
-			else if (WIIU_DEBUG == 8'h8F && serial_bits >= 8) begin
+			else if ((WIIU_DEBUG & 8'hBF) == 8'h8F && serial_bits >= 8) begin
 				WIIU_DEBUG_HISTORY <= WIIU_DEBUG_HISTORY | (serial_byte << (8*WIIU_DEBUG_HISTORY_LEN));
 				WIIU_DEBUG_HISTORY_LEN <= WIIU_DEBUG_HISTORY_LEN + 1;
+
+				wiiu_tx_byte <= uart_rx_queue[7:0];
+				uart_rx_queue_len <= uart_rx_queue_len - 1;
 
 				got_bit <= 0;
 
 				serial_byte <= 0;
 				serial_bits <= 0;
 			end
-			else if (WIIU_DEBUG == 8'h8F && serial_bits < 8) begin
+			else if ((WIIU_DEBUG & 8'hBF) == 8'h8F && serial_bits < 8) begin
+
+				wiiu_tx_byte <= uart_rx_queue[7:0];
+				uart_rx_queue_len <= uart_rx_queue_len - 1;
 				
 				got_bit <= 0;
 
@@ -257,7 +296,7 @@ module top (
 				is_serial <= 0;
 			end
 		end 
-		else if (!is_serial && (WIIU_DEBUG != LAST_WIIU_DEBUG || (buffer_btn2 && !last_buffer_btn2)) && !BTN3) begin
+		else if (!is_serial && (WIIU_DEBUG != LAST_WIIU_DEBUG || (buffer_btn2 && !last_buffer_btn2)) && !(BTN3 || (!wiiu_nrst_read && last_wiiu_nrst_read))) begin
 			WIIU_DEBUG_HISTORY <= WIIU_DEBUG_HISTORY | (WIIU_DEBUG << (8*WIIU_DEBUG_HISTORY_LEN));
 			WIIU_DEBUG_HISTORY_LEN <= WIIU_DEBUG_HISTORY_LEN + 1;
 			LAST_WIIU_DEBUG <= WIIU_DEBUG;
@@ -344,7 +383,7 @@ module top (
 		end
 
 		// Manual reset hold on BTN3, plus reset counter
-		if (BTN3) begin
+		if ((BTN3 || (!wiiu_nrst_read && last_wiiu_nrst_read))) begin
 			reset_trigger <= 1;
 			is_serial <= 0;
 			perma_stop_reset <= 0;
@@ -359,7 +398,7 @@ module top (
 		end
 
 		// Emulate my button bouncing
-		if (BTN3) begin
+		if ((BTN3 || (!wiiu_nrst_read && last_wiiu_nrst_read))) begin
 			button_delay_0 <= DELAY_0;
 			button_delay_1 <= button_delay_1_inc;
 			button_delay_2 <= DELAY_2;
@@ -402,7 +441,7 @@ module top (
 	assign LEDG_N = ~data_tx[1];
 
 	assign {LED1, LED2, LED3, LED4} = WIIU_DEBUG[7:4];
-	assign P1B1 = !(reset_trigger && !perma_stop_reset);
+	assign P1B1 = perma_stop_reset ? 1'bz : !(reset_trigger && !perma_stop_reset);
 	assign {LED5} = buffer_btn1;
 
 	// Force UNSTBL_PWR on boot:

@@ -59,6 +59,8 @@ while True:
                #serial_data = []
           elif is_text_serial:
                if data[0] == ord('\t') or data[0] == ord('\n') or data[0] == ord('\r') or (data[0] >= ord(' ') and data[0] <= ord('~')):
+                    if data[0] == ord('\n'):
+                         port.write(b'\x55')
                     if data[0] == ord('\r') and serial_data_nowipe[-2] != ord('\n'):
                          sys.stdout.write('\n')
                     else:
