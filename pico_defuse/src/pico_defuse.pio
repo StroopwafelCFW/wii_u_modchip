@@ -2,16 +2,45 @@
 .program debug_gpio_monitor_parallel
 start:
     set x, 0
-    set y, 0
 
 shift_out:
-    mov x, y
-    in x 8 ; autopush handles the rest
+    mov y, x
+    in y, 8
+    push block
 
 loop:
-    mov y, pins
-    jmp x!=y shift_out
+    mov x, pins
+
+    ; HACK: ^ doesn't max out the random GPIO it reads into bits [31:8],
+    ; so we use the isr to mask it before checking
+    in x, 8
+    mov x, isr
+    in null, 32
+    jmp x!=y, shift_out
     jmp loop
+
+
+.program exi_inject
+start:
+    ; We can't mov the value 0x40 lol, pull it in this way.
+    pull block
+    mov x, osr
+
+    ; keep pins 0 and HiZ so that it doesn't clobber the 0x03030303 magic.
+    set pins, 0x0
+    set pindirs, 0x0
+reset:
+    mov y, x
+loop:
+    wait 1 pin 0                ; Wait for CLK high
+    wait 0 pin 0                ; Wait for CLK low
+    jmp y-- loop
+
+    ; Spray and pray
+    set pins, 0xF
+    set pindirs, 0xF
+    jmp reset
+    
 
 % c-sdk {
 
@@ -30,10 +59,35 @@ loop:
 
         pio_sm_set_consecutive_pindirs(pio, sm, pin_base, pin_count, false);
 
-        sm_config_set_in_shift(&c, false, true, 8);
+        sm_config_set_in_shift(&c, false, false, 8);
         sm_config_set_fifo_join(&c, PIO_FIFO_JOIN_RX);
 
         pio_sm_init(pio, sm, offset, &c);
+    }
+
+    void exi_inject_program_init(PIO pio, uint sm, uint offset, uint pin_clk, uint pin_data, float div) {
+        pio_sm_config c = pio_get_default_sm_config();
+
+        for (int i = 0; i < 4; i++)
+        {
+            pio_gpio_init(pio, pin_data + i);
+        }
+
+        sm_config_set_in_pins(&c, pin_clk);
+        sm_config_set_set_pins(&c, pin_data, 4);
+        sm_config_set_out_pins(&c, pin_data, 4);
+        sm_config_set_clkdiv(&c, div);
+
+        pio_sm_set_consecutive_pindirs(pio, sm, pin_clk, 1, false);
+        pio_sm_set_consecutive_pindirs(pio, sm, pin_data, 4, true);
+
+        sm_config_set_in_shift(&c, false, true, 8);
+        sm_config_set_out_shift(&c, false, false, 8);
+
+        pio_sm_init(pio, sm, offset, &c);
+
+        //pio_sm_exec(pio, sm, pio_encode_);
+        pio_sm_put(pio, sm, 0x40);
     }
 
 %}
