@@ -7,3 +7,6 @@ log*.txt
 golden.txt
 
 .DS_Store
+
+pico_defuse/build/*
+pico_defuse/build
