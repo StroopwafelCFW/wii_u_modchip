@@ -77,27 +77,28 @@ void main()
     channel_config_set_dreq(&c, pio_get_dreq(pio, debug_gpio_monitor_parallel_sm, false));
     
     int winner = 0;
-    for (int reset_attempt = 0; reset_attempt < 0x10000; reset_attempt++)
+    for (int reset_attempt = 0xFA9B; reset_attempt < 0x10000; reset_attempt++)
     {
-        printf("init exi inject\n");
+        printf("Starting... %u\n", reset_attempt);
         pio_sm_set_enabled(pio, debug_gpio_monitor_parallel_sm, true);
         exi_inject_program_init(pio, exi_inject_sm, exi_inject_offset, PIN_CLK, PIN_DATA_BASE, 1.0);
 
-        printf("warmup run\n");
-
         // Read OTP fully at least once and then hold
         gpio_put(PIN_NRST, false);
-        gpio_put(PIN_NRST, true);
-        sleep_ms(30);
-        gpio_put(PIN_NRST, false);
-
-        // Clear out the FIFO
-        for (int i = 0; i < 0x20; i++)
+        for(int i = 0; i < 0x200; i++)
         {
-            pio_sm_get(pio, debug_gpio_monitor_parallel_sm);
+            __asm volatile ("nop\n");
         }
-
-        printf("Starting... %u\n", reset_attempt);
+        gpio_put(PIN_NRST, true);
+        for(int i = 0; i < 0x1000; i++)
+        {
+            __asm volatile ("nop\n");
+        }
+        gpio_put(PIN_NRST, false);
+        for(int i = 0; i < 0x200; i++)
+        {
+            __asm volatile ("nop\n");
+        }
 
         // The actual timing-sensitive part...
         gpio_put(PIN_NRST, true);
@@ -106,7 +107,10 @@ void main()
             __asm volatile ("nop\n");
         }
         gpio_put(PIN_NRST, false);
-        printf("Check...\n");
+        for(int i = 0; i < 0x200; i++)
+        {
+            __asm volatile ("nop\n");
+        }
 
         // Clear out the FIFO
         for (int i = 0; i < 0x20; i++)
@@ -126,7 +130,7 @@ void main()
 
         pio_sm_set_enabled(pio, exi_inject_sm, true);
         gpio_put(PIN_NRST, true);
-        sleep_ms(60);
+        sleep_ms(100);
         dma_channel_abort(chan);
         pio_sm_set_enabled(pio, debug_gpio_monitor_parallel_sm, false);
         pio_sm_set_enabled(pio, exi_inject_sm, false);
