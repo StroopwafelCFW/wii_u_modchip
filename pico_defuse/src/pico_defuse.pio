@@ -19,6 +19,21 @@ loop:
     jmp x!=y, shift_out
     jmp loop
 
+.program debug_gpio_monitor_serial
+start:
+reset:
+    in null, 32
+    set x, 7
+
+loop:
+    wait 1 pin 7                ; Wait for CLK high
+    jmp pin, reset              ; 08 bit resets
+    in pins, 1
+    wait 0 pin 7                ; Wait for CLK low
+
+    jmp x--, loop
+    push block
+    jmp loop
 
 .program exi_inject
 start:
@@ -34,7 +49,7 @@ reset:
 loop:
     wait 1 pin 0                ; Wait for CLK high
     wait 0 pin 0                ; Wait for CLK low
-    jmp y-- loop
+    jmp y--, loop
 
     ; Spray and pray
     set pins, 0xF
@@ -44,9 +59,7 @@ loop:
 
 % c-sdk {
 
-    void debug_gpio_monitor_parallel_program_init(PIO pio, uint sm, uint pin_base, uint pin_count, float div) {
-        uint offset = pio_add_program(pio, &debug_gpio_monitor_parallel_program);
-
+    void debug_gpio_monitor_parallel_program_init(PIO pio, uint sm, uint offset, uint pin_base, uint pin_count, float div) {
         pio_sm_config c = pio_get_default_sm_config();
 
         for (int i = 0; i < pin_count; i++)
@@ -55,6 +68,27 @@ loop:
         }
 
         sm_config_set_in_pins(&c, pin_base);
+        sm_config_set_clkdiv(&c, div);
+
+        pio_sm_set_consecutive_pindirs(pio, sm, pin_base, pin_count, false);
+
+        sm_config_set_in_shift(&c, false, false, 8);
+        sm_config_set_fifo_join(&c, PIO_FIFO_JOIN_RX);
+
+        pio_sm_init(pio, sm, offset, &c);
+    }
+
+    void debug_gpio_monitor_serial_program_init(PIO pio, uint sm, uint offset, uint pin_base, uint pin_count, float div) {
+        pio_sm_config c = pio_get_default_sm_config();
+
+        for (int i = 0; i < pin_count; i++)
+        {
+            pio_gpio_init(pio, pin_base + i);
+        }
+
+        sm_config_set_in_pins(&c, pin_base);
+        sm_config_set_out_pins(&c, pin_base + 6, 1); // 40
+        sm_config_set_jmp_pin(&c, pin_base + 3); // 08
         sm_config_set_clkdiv(&c, div);
 
         pio_sm_set_consecutive_pindirs(pio, sm, pin_base, pin_count, false);
