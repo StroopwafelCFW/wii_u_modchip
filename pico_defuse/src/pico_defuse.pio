@@ -40,21 +40,29 @@ start:
     ; We can't mov the value 0x40 lol, pull it in this way.
     pull block
     mov x, osr
+    mov y, x
 
     ; keep pins 0 and HiZ so that it doesn't clobber the 0x03030303 magic.
     set pins, 0x0
     set pindirs, 0x0
-reset:
-    mov y, x
-loop:
+loop1:
     wait 1 pin 0                ; Wait for CLK high
     wait 0 pin 0                ; Wait for CLK low
-    jmp y--, loop
+    jmp x--, loop1
 
     ; Spray and pray
     set pins, 0xF
     set pindirs, 0xF
-    jmp reset
+loop2:
+    wait 1 pin 0                ; Wait for CLK high
+    wait 0 pin 0                ; Wait for CLK low
+    jmp y--, loop2
+
+    ; done, keep pins 0 and HiZ so that it doesn't clobber boot1 reads.
+    set pins, 0x0
+    set pindirs, 0x0
+stall:
+    jmp stall
     
 
 % c-sdk {
