@@ -49,8 +49,8 @@ void main()
 
     // TODO: figure out the bare minimum I can pull off (maybe downclock later?)
     // 250MHz seems to capture debug pin transistions, which was the ~status quo
-    // on my FPGA at 27MHz. Let's do 8x27MHz to be safe.
-    set_sys_clock_khz(216000, true);
+    // on my FPGA at 27MHz. Let's do 4x27MHz to be safe.
+    set_sys_clock_khz(108000, true);
 
     sleep_ms(3000);
     printf("Hello!\n");
@@ -92,9 +92,10 @@ void main()
     channel_config_set_write_increment(&c, true);
     channel_config_set_dreq(&c, pio_get_dreq(pio, debug_gpio_monitor_parallel_sm, false));
     
-    // winning range: 0xB40 ~ 0x703 -- long tail? 0xbb9 ~ 0x461
+    // winning range (at 8x27MHz): 0xB40 ~ 0x703 -- long tail? 0xbb9 ~ 0x461 (optimal: 0x900, 0x48 bytes OTP loaded)
+    // winning range (at 4x27MHz): 0x5a0 ~ 0x381 -- (optimal: 0x480, 0x48 bytes OTP loaded)
     int winner = 0;
-    for (int reset_attempt = (0x10000-0x900); reset_attempt < 0x10000; reset_attempt++)
+    for (int reset_attempt = (0x10000-0x480); reset_attempt < 0x10000; reset_attempt++)
     {
         winner = 0;
         printf("Starting... %u\n", reset_attempt);
@@ -103,17 +104,17 @@ void main()
 
         // Read OTP fully at least once and then hold
         gpio_put(PIN_NRST, false);
-        for(int i = 0; i < 0x200; i++)
+        for(int i = 0; i < 0x100; i++)
         {
             __asm volatile ("\n");
         }
         gpio_put(PIN_NRST, true);
-        for(int i = 0; i < 0x1000; i++)
+        for(int i = 0; i < 0x800; i++)
         {
             __asm volatile ("\n");
         }
         gpio_put(PIN_NRST, false);
-        for(int i = 0; i < 0x200; i++)
+        for(int i = 0; i < 0x100; i++)
         {
             __asm volatile ("\n");
         }
@@ -127,7 +128,7 @@ void main()
             __asm volatile ("\n");
         }
         gpio_put(PIN_NRST, false);
-        for(int i = 0; i < 0x200; i++)
+        for(int i = 0; i < 0x100; i++)
         {
             __asm volatile ("\n");
         }
