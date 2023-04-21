@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <string.h>
 #include "pico/stdlib.h"
 #include "hardware/pio.h"
 #include "hardware/clocks.h"
@@ -36,6 +37,14 @@ uint debug_gpio_monitor_serial_offset;
 #define WIIU_STATE_MONITORING     (3)
 #define WIIU_CHECK_IF_POWERED_OFF (4)
 
+const char* WIIU_STATE_NAMES[5] = {
+    "WIIU_STATE_POWERED_OFF",
+    "WIIU_STATE_NEEDS_DEFUSE",
+    "WIIU_STATE_DEFUSED",
+    "WIIU_STATE_MONITORING",
+    "WIIU_CHECK_IF_POWERED_OFF",
+};
+
 const uint8_t MONITOR_SERIAL_DATA_MAGIC[12] = {0x55, 0xAA, 0x55, 0xAA, 0x55, 0xAA, 0x55, 0xAA, 0xBE, 0xEF, 0xCA, 0xFE};
 const uint8_t MONITOR_SERIAL_TEXT_MAGIC[12] = {0x55, 0xAA, 0x55, 0xAA, 0x55, 0xAA, 0x55, 0xAA, 0xF0, 0x0F, 0xCA, 0xFE};
 
@@ -56,7 +65,6 @@ void nrst_sense_callback(uint gpio, uint32_t events)
     // NRST went from low to high, we need to inject de_Fuse
     if (events & 8)
     {
-        printf("NRST lohi %x\n", events);
         switch (wiiu_state)
         {
         case WIIU_STATE_POWERED_OFF:
@@ -66,7 +74,6 @@ void nrst_sense_callback(uint gpio, uint32_t events)
         }
     }
     else if (events & 4) {
-        printf("NRST hilo %x, %x %x\n", events, wiiu_state, next_wiiu_state);
         next_wiiu_state = WIIU_CHECK_IF_POWERED_OFF;
     }
     
@@ -374,6 +381,11 @@ void main()
     slow_one_time_init();
 
     printf("Start state machine.\n");
+    if (gpio_get(PIN_NRST)) {
+        printf("[pico] Uhhh the console is on? Monitoring...\n");
+        wiiu_state = WIIU_STATE_MONITORING;
+        next_wiiu_state = WIIU_STATE_MONITORING;
+    }
 
     // State machines yayyyy
     while (1)
@@ -409,7 +421,7 @@ void main()
             break;
         }
         if (wiiu_state != next_wiiu_state)
-            printf("%x -> %x\n", wiiu_state, next_wiiu_state);
+            printf("[pico] Changed state: %s -> %s\n", WIIU_STATE_NAMES[wiiu_state], WIIU_STATE_NAMES[next_wiiu_state]);
         wiiu_state = next_wiiu_state;
     }
 }

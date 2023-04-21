@@ -129,7 +129,7 @@ stall:
         pio_sm_init(pio, sm, offset, &c);
 
         //pio_sm_exec(pio, sm, pio_encode_);
-        pio_sm_put(pio, sm, 0x40);
+        pio_sm_put(pio, sm, 0x3F);
     }
 
 %}
