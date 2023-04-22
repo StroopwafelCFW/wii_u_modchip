@@ -21,17 +21,20 @@ loop:
 
 .program debug_gpio_monitor_serial
 start:
+    set x, 0 ; default shift out
 reset:
     in null, 32
-    set x, 7
+    set y, 7
+    pull ifempty noblock ; serial data in osr
 
 loop:
     wait 1 pin 7                ; Wait for CLK high
     jmp pin, reset              ; 08 bit resets
     in pins, 1
+    out pins, 4
     wait 0 pin 7                ; Wait for CLK low
 
-    jmp x--, loop
+    jmp y--, loop
     push block
     jmp loop
 
@@ -67,18 +70,26 @@ stall:
 
 % c-sdk {
 
-    void debug_gpio_monitor_parallel_program_init(PIO pio, uint sm, uint offset, uint pin_base, uint pin_count, float div) {
+    void debug_gpio_monitor_parallel_program_init(PIO pio, uint sm, uint offset, uint pin_base, uint pin_out_base, float div) {
         pio_sm_config c = pio_get_default_sm_config();
 
-        for (int i = 0; i < pin_count; i++)
+        for (int i = 0; i < 8; i++)
         {
             pio_gpio_init(pio, pin_base + i);
         }
 
+        for (int i = 0; i < 4; i++)
+        {
+            pio_gpio_init(pio, pin_out_base + i);
+        }
+
         sm_config_set_in_pins(&c, pin_base);
+        sm_config_set_out_pins(&c, pin_out_base, 4); // 40
+        sm_config_set_jmp_pin(&c, pin_base + 3); // 08
         sm_config_set_clkdiv(&c, div);
 
-        pio_sm_set_consecutive_pindirs(pio, sm, pin_base, pin_count, false);
+        pio_sm_set_consecutive_pindirs(pio, sm, pin_base, 8, false);
+        pio_sm_set_consecutive_pindirs(pio, sm, pin_out_base, 4, false); // keep output pins HiZ for now
 
         sm_config_set_in_shift(&c, false, false, 8);
         sm_config_set_fifo_join(&c, PIO_FIFO_JOIN_RX);
@@ -86,23 +97,30 @@ stall:
         pio_sm_init(pio, sm, offset, &c);
     }
 
-    void debug_gpio_monitor_serial_program_init(PIO pio, uint sm, uint offset, uint pin_base, uint pin_count, float div) {
+    void debug_gpio_monitor_serial_program_init(PIO pio, uint sm, uint offset, uint pin_base, uint pin_out_base, float div) {
         pio_sm_config c = pio_get_default_sm_config();
 
-        for (int i = 0; i < pin_count; i++)
+        for (int i = 0; i < 8; i++)
         {
             pio_gpio_init(pio, pin_base + i);
         }
 
+        for (int i = 0; i < 4; i++)
+        {
+            pio_gpio_init(pio, pin_out_base + i);
+        }
+
         sm_config_set_in_pins(&c, pin_base);
-        sm_config_set_out_pins(&c, pin_base + 6, 1); // 40
+        sm_config_set_out_pins(&c, pin_out_base, 4); // 40
         sm_config_set_jmp_pin(&c, pin_base + 3); // 08
         sm_config_set_clkdiv(&c, div);
 
-        pio_sm_set_consecutive_pindirs(pio, sm, pin_base, pin_count, false);
+        pio_sm_set_consecutive_pindirs(pio, sm, pin_base, 8, false);
+        pio_sm_set_consecutive_pindirs(pio, sm, pin_out_base, 4, true); // output pins as outputs now
 
         sm_config_set_in_shift(&c, false, false, 8);
-        sm_config_set_fifo_join(&c, PIO_FIFO_JOIN_RX);
+        sm_config_set_out_shift(&c, false, false, 32);
+        //sm_config_set_fifo_join(&c, PIO_FIFO_JOIN_RX);
 
         pio_sm_init(pio, sm, offset, &c);
     }
@@ -114,6 +132,8 @@ stall:
         {
             pio_gpio_init(pio, pin_data + i);
         }
+
+        pio_gpio_init(pio, pin_clk);
 
         sm_config_set_in_pins(&c, pin_clk);
         sm_config_set_set_pins(&c, pin_data, 4);
