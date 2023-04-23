@@ -29,5 +29,5 @@ Based on [PicoBoot](https://github.com/webhdx/PicoBoot)
 | GP20           | TP48            | DEBUG6      |
 | GP21           | TP48            | DEBUG6      |
 |                |                 |             |
-| GND            |  GND, and/or TP137 |      GND |
-| 3V3(OUT)       |  TP138             | Always-On 3.3v (TODO: should this go in VSYS instead?) |
+| GND            |  GND, and/or TP164 |      GND |
+| 3V3(OUT)       |  TP122             | Always-On 3.3v |
