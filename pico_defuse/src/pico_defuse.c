@@ -18,6 +18,7 @@ const uint PIN_CLK = 14;                // EXI bus clock line
 
 uint8_t read_debug_gpios[0x100] = {0};
 
+int nrst_fallback = 0;
 PIO pio;
 PIO pio_exi;
 int debug_gpio_monitor_dmachan;
@@ -412,7 +413,7 @@ void de_fuse()
 
     if (!winner && only_zeros) {
         printf("[Pico] Wii U doesn't seem to be powered on?\n");
-        next_wiiu_state = WIIU_STATE_POWERED_OFF;
+        next_wiiu_state = WIIU_CHECK_IF_POWERED_OFF;
     }
 }
 
@@ -520,6 +521,25 @@ void wiiu_serial_monitor()
     }
 }
 
+void fallback_power_check()
+{
+    // Safety fallback
+    if (nrst_sense_state) {
+        if (!gpio_get(PIN_NRST)) {
+            nrst_fallback++;
+        }
+        else {
+            nrst_fallback = 0;
+        }
+
+        if (nrst_fallback > 1000) {
+            printf("[pico] Fallback: Wii U was unplugged while I wasn't watching!\n");
+            next_wiiu_state = WIIU_CHECK_IF_POWERED_OFF;
+            nrst_fallback = 0;
+        }
+    }
+}
+
 void main()
 {
     fast_one_time_init();
@@ -532,10 +552,17 @@ void main()
     slow_one_time_init();
 
     printf("Start state machine.\n");
+#if 0
     if (gpio_get(PIN_NRST)) {
         printf("[pico] Uhhh the console is on? Monitoring...\n");
         wiiu_state = WIIU_STATE_DEFUSED;
         next_wiiu_state = WIIU_STATE_DEFUSED;
+    }
+#endif
+    if (gpio_get(PIN_NRST)) {
+        printf("[pico] Uhhh the console is on? Defusing now...?\n");
+        wiiu_state = WIIU_STATE_NEEDS_DEFUSE;
+        next_wiiu_state = WIIU_STATE_NEEDS_DEFUSE;
     }
 
     // State machines yayyyy
@@ -544,6 +571,10 @@ void main()
         switch (wiiu_state)
         {
         case WIIU_STATE_NORMAL_BOOT:
+            nrst_sense_set(true); // wait for IRQs
+            fallback_power_check();
+            break;
+
         case WIIU_STATE_POWERED_OFF:
             nrst_sense_set(true); // wait for IRQs
             break;
@@ -551,6 +582,7 @@ void main()
         // Kinda redundant since the IRQ should catch the rising edge, 
         // but juuuust to be sure.
         case WIIU_CHECK_IF_POWERED_OFF:
+            nrst_sense_set(true);
             sleep_ms(10);
             if (gpio_get(PIN_NRST)) {
                 next_wiiu_state = WIIU_STATE_NEEDS_DEFUSE;
@@ -570,8 +602,12 @@ void main()
 
         case WIIU_STATE_MONITORING:
             wiiu_serial_monitor();
+            fallback_power_check();
             break;
         }
+
+        
+
         if (wiiu_state != next_wiiu_state)
             printf("[pico] Changed state: %s -> %s\n", WIIU_STATE_NAMES[wiiu_state], WIIU_STATE_NAMES[next_wiiu_state]);
         wiiu_state = next_wiiu_state;
