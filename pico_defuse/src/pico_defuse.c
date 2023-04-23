@@ -257,8 +257,10 @@ void de_fuse()
     // winning range (at 4x27MHz): 0x5a0 ~ 0x381 -- (optimal: 0x480, 0x48 bytes OTP loaded)
     int winner = 0;
     uint8_t error_code = 0;
+    int only_zeros = 1;
     for (int reset_attempt = RESET_RANGE_MAX; reset_attempt >= RESET_RANGE_MIN; reset_attempt--)
     {
+        only_zeros = 1;
         winner = 0;
         error_code = 0;
         printf("Starting... %u\n", reset_attempt);
@@ -346,6 +348,9 @@ void de_fuse()
         printf("Results:\n");
         for (int i = 0; i < 0x100; i++)
         {
+            if (read_debug_gpios[i]) {
+                only_zeros = 0;
+            }
             if (i && read_debug_gpios[i] == read_debug_gpios[i-1]) {
                 break;
             }
@@ -390,7 +395,7 @@ void de_fuse()
 
     // TODO: do this after trying a NAND boot1?
     // If no SD card is inserted, or an invalid one is inserted, boot0 stalls.
-    if (!winner && error_code == 0x00) {
+    if (!winner && error_code == 0x00 && !only_zeros) {
         printf("SD card not valid or not inserted, doing a normal boot.\n");
         gpio_put(PIN_NRST, false);
         for(int i = 0; i < 0x100; i++)
@@ -403,6 +408,11 @@ void de_fuse()
             __asm volatile ("\n");
         }
         next_wiiu_state = WIIU_STATE_NORMAL_BOOT;
+    }
+
+    if (!winner && only_zeros) {
+        printf("[Pico] Wii U doesn't seem to be powered on?\n");
+        next_wiiu_state = WIIU_STATE_POWERED_OFF;
     }
 }
 
