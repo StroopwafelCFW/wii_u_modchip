@@ -501,7 +501,7 @@ void wiiu_serial_monitor()
         {
             // reading input
         }
-        else if (read_val == 0x1B || read_val == '\t' || read_val == '\n' || read_val == '\r' || (read_val >= ' ' && read_val <= '~')) {
+        else if (read_val == 0xAA || read_val == 0x1B || read_val == '\t' || read_val == '\n' || read_val == '\r' || (read_val >= ' ' && read_val <= '~')) {
             if ((read_val == '\r' && last_16_bytes[14] != '\n') || read_val == '\n') {
                 printf("%s\n", text_buffer);
                 memset(text_buffer, 0, text_buffer_pos);
