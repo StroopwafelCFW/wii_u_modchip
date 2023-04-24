@@ -22,11 +22,11 @@ loop:
 .program debug_gpio_monitor_serial
 start:
     set x, 0 ; default shift out
+invalid_reset:
+    set pins, 0x0
 reset:
     in null, 32
     set y, 7
-    pull ifempty noblock ; serial data in osr
-
 loop:
     wait 1 pin 7                ; Wait for CLK high
     jmp pin, reset              ; 08 bit resets
@@ -36,7 +36,12 @@ loop:
 
     jmp y--, loop
     push block
-    jmp loop
+    pull noblock ; is the serial data valid (0xFFFFFFFF)
+    mov y, osr
+    pull noblock ; the actual serial data
+    jmp !y, invalid_reset
+    set pins, 0xF
+    jmp reset
 
 .program exi_inject
 start:
@@ -85,6 +90,7 @@ stall:
 
         sm_config_set_in_pins(&c, pin_base);
         sm_config_set_out_pins(&c, pin_out_base, 4); // 40
+        sm_config_set_set_pins(&c, pin_out_base, 4); // 40
         sm_config_set_jmp_pin(&c, pin_base + 3); // 08
         sm_config_set_clkdiv(&c, div);
 
@@ -112,6 +118,7 @@ stall:
 
         sm_config_set_in_pins(&c, pin_base);
         sm_config_set_out_pins(&c, pin_out_base, 4); // 40
+        sm_config_set_set_pins(&c, pin_out_base, 4); // 40
         sm_config_set_jmp_pin(&c, pin_base + 3); // 08
         sm_config_set_clkdiv(&c, div);
 

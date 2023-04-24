@@ -440,6 +440,7 @@ void wiiu_serial_monitor()
         int char_in = getchar_timeout_us(0);
         if (char_in != PICO_ERROR_TIMEOUT && (char_in >= 0 && char_in <= 0xFF)) {
             //printf("[pico] char! %x\n", char_in);
+            pio_sm_put(pio, debug_gpio_monitor_parallel_sm, 0xFFFFFFFF); // serial data is valid
             pio_sm_put(pio, debug_gpio_monitor_parallel_sm, serial_LUT[char_in]);
         }
     }
