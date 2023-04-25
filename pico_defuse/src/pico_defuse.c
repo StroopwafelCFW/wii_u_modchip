@@ -119,7 +119,7 @@ const uint8_t MONITOR_SERIAL_DATA_MAGIC[12] = {0x55, 0xAA, 0x55, 0xAA, 0x55, 0xA
 const uint8_t MONITOR_SERIAL_TEXT_MAGIC[12] = {0x55, 0xAA, 0x55, 0xAA, 0x55, 0xAA, 0x55, 0xAA, 0xF0, 0x0F, 0xCA, 0xFE};
 const uint8_t MONITOR_PARALLEL_DATA_MAGIC[12] = {0x55, 0xAA, 0x55, 0xAA, 0x55, 0xAA, 0x55, 0xAA, 0xBE, 0xEF, 0xBE, 0xEF};
 const uint8_t MONITOR_RESET_MAGIC[12] = {0x55, 0xAA, 0x55, 0xAA, 0x55, 0xAA, 0x55, 0xAA, 0x4E, 0x52, 0x53, 0x54};
-
+const uint8_t MONITOR_RESET_PRSHHAX_MAGIC[12] = {0x55, 0xAA, 0x55, 0xAA, 0x55, 0xAA, 0x55, 0xAA, 0x50, 0x52, 0x53, 0x48};
 
 char text_buffer[2048];
 int text_buffer_pos = 0;
@@ -243,6 +243,24 @@ void slow_one_time_init()
     channel_config_set_read_increment(&debug_gpio_monitor_dmacfg, false);
     channel_config_set_write_increment(&debug_gpio_monitor_dmacfg, true);
     channel_config_set_dreq(&debug_gpio_monitor_dmacfg, pio_get_dreq(pio, debug_gpio_monitor_parallel_sm, false));
+}
+
+void do_normal_reset()
+{
+    // Disable NRST sensing and take control of the line.
+    nrst_sense_set(false);
+
+    gpio_put(PIN_NRST, false);
+    for(int i = 0; i < 0x100; i++)
+    {
+        __asm volatile ("\n");
+    }
+    gpio_put(PIN_NRST, true);
+    for(int i = 0; i < 0x100; i++)
+    {
+        __asm volatile ("\n");
+    }
+    next_wiiu_state = WIIU_STATE_NORMAL_BOOT;
 }
 
 void de_fuse()
@@ -398,17 +416,7 @@ void de_fuse()
     // If no SD card is inserted, or an invalid one is inserted, boot0 stalls.
     if (!winner && error_code == 0x00 && !only_zeros) {
         printf("SD card not valid or not inserted, doing a normal boot.\n");
-        gpio_put(PIN_NRST, false);
-        for(int i = 0; i < 0x100; i++)
-        {
-            __asm volatile ("\n");
-        }
-        gpio_put(PIN_NRST, true);
-        for(int i = 0; i < 0x100; i++)
-        {
-            __asm volatile ("\n");
-        }
-        next_wiiu_state = WIIU_STATE_NORMAL_BOOT;
+        do_normal_reset();
     }
 
     if (!winner && only_zeros) {
@@ -461,6 +469,13 @@ void wiiu_serial_monitor()
         next_wiiu_state = WIIU_STATE_NEEDS_DEFUSE;
         printf("[Pico] Console requested reset...\n");
         sleep_ms(500); // give it a delay
+    }
+    else if (!memcmp(last_16_bytes+4, MONITOR_RESET_PRSHHAX_MAGIC, 12))
+    {
+        printf("[Pico] Console requested prshhax prshhax reset...\n");
+        do_normal_reset();
+        sleep_ms(3000); // give it a delay
+        next_wiiu_state = WIIU_STATE_NEEDS_DEFUSE;
     }
     else if (!memcmp(last_16_bytes+4, MONITOR_PARALLEL_DATA_MAGIC, 12)) {
         debug_gpio_monitor_parallel_program_init(pio, debug_gpio_monitor_parallel_sm, debug_gpio_monitor_parallel_offset, PIN_DEBUGLED_BASE, PIN_SERIALOUT_BASE, 1.0);

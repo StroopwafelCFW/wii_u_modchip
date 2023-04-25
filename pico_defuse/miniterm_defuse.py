@@ -512,12 +512,13 @@ class Miniterm(object):
                 # read all that is there or wait for one byte
                 data = self.serial.read(self.serial.in_waiting or 1)
                 if data:
-                    self.serial_data_nowipe += list(data)
-                    self.serial_data_nowipe = self.serial_data_nowipe[-16:]
+                    for b in list(data):
+                        self.serial_data_nowipe += [b]
+                        self.serial_data_nowipe = self.serial_data_nowipe[-16:]
 
-                    #print (self.serial_data_nowipe[-12:], self.serial_data_nowipe[-12:] == MAGIC_UPLD)
-                    if self.serial_data_nowipe[-12:] == MAGIC_UPLD:
-                        self.upload_file_by_name("/Users/maxamillion/workspace/minute_minute/fw.img")
+                        #print (self.serial_data_nowipe[-12:], self.serial_data_nowipe[-12:] == MAGIC_UPLD)
+                        if self.serial_data_nowipe[-12:] == MAGIC_UPLD:
+                            self.upload_file_by_name("/Users/maxamillion/workspace/minute_minute/fw.img")
                     if self.raw:
                         self.console.write_bytes(data)
                     else:
