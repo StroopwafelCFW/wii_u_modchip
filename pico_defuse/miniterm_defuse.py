@@ -518,7 +518,7 @@ class Miniterm(object):
 
                         #print (self.serial_data_nowipe[-12:], self.serial_data_nowipe[-12:] == MAGIC_UPLD)
                         if self.serial_data_nowipe[-12:] == MAGIC_UPLD:
-                            self.upload_file_by_name("/Users/maxamillion/workspace/minute_minute/fw.img")
+                            self.upload_file_by_name(os.getenv("MINUTE_MINUTE_FW_IMG"))
                     if self.raw:
                         self.console.write_bytes(data)
                     else:
