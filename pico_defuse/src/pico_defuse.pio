@@ -43,6 +43,23 @@ loop:
     set pins, 0xF
     jmp reset
 
+.program reset_cycle_accurate
+start:
+    ; We can't mov the value 0x40 lol, pull it in this way.
+    pull block
+    mov x, osr
+    mov y, x
+
+    ; set it high for exactly the number of cycles given
+    set pins, 0x0
+loop2:
+    jmp y--, loop2
+
+    ; back to low so we can hand the GPIO back
+    set pins, 0x0
+stall:
+    jmp stall
+
 .program exi_inject
 start:
     ; We can't mov the value 0x40 lol, pull it in this way.
@@ -130,6 +147,32 @@ stall:
         //sm_config_set_fifo_join(&c, PIO_FIFO_JOIN_RX);
 
         pio_sm_init(pio, sm, offset, &c);
+    }
+
+    void reset_cycle_accurate_program_init(PIO pio, uint sm, uint offset, uint rst_pin, uint rst_duration, float div) {
+        pio_sm_config c = pio_get_default_sm_config();
+
+        sm_config_set_set_pins(&c, rst_pin, 1);
+
+        sm_config_set_in_shift(&c, false, false, 32);
+        sm_config_set_fifo_join(&c, PIO_FIFO_JOIN_RX);
+
+        pio_sm_set_pins(pio, sm, 0x0);
+        pio_sm_set_consecutive_pindirs(pio, sm, rst_pin, 1, true);
+
+        pio_sm_init(pio, sm, offset, &c);
+
+        pio_sm_put(pio, sm, rst_duration);
+    }
+
+    void reset_cycle_accurate_program_reset(PIO pio, uint sm, uint offset, uint rst_pin, uint rst_duration, float div) {
+        pio_sm_config c = pio_get_default_sm_config();
+
+        pio_sm_set_pins(pio, sm, 0x0);
+        pio_gpio_init(pio, rst_pin);
+        pio_sm_init(pio, sm, offset, &c);
+
+        pio_sm_put(pio, sm, rst_duration);
     }
 
     void exi_inject_program_init(PIO pio, uint sm, uint offset, uint pin_clk, uint pin_data, float div) {

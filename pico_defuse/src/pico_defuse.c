@@ -24,10 +24,12 @@ PIO pio_exi;
 int debug_gpio_monitor_dmachan;
 dma_channel_config debug_gpio_monitor_dmacfg;
 uint debug_gpio_monitor_parallel_sm;
+uint reset_cycle_accurate_sm;
 uint exi_inject_sm;
 uint exi_inject_offset;
 uint debug_gpio_monitor_parallel_offset;
 uint debug_gpio_monitor_serial_offset;
+uint reset_cycle_accurate_offset;
 
 #define MONITOR_SERIAL_DATA (0)
 #define MONITOR_SERIAL_TEXT (1)
@@ -132,8 +134,21 @@ uint8_t wiiu_state = WIIU_STATE_POWERED_OFF;
 uint8_t next_wiiu_state = WIIU_STATE_POWERED_OFF;
 bool nrst_sense_state = false;
 
-#define RESET_RANGE_MIN (0x440)
-#define RESET_RANGE_MAX (0x480)
+// Cycle-accurate JTAG enable
+//#define DEFUSE_JTAG
+#define DEFUSE_BYTE_UNIT (0x4)
+
+#ifdef DEFUSE_JTAG
+#define RESET_RANGE_MIN (RESET_RANGE_MAX-(DEFUSE_BYTE_UNIT*0x20))
+#define RESET_RANGE_MAX (0xE9C)
+#else
+#define RESET_RANGE_MIN (RESET_RANGE_MAX-(DEFUSE_BYTE_UNIT*0x40))
+#define RESET_RANGE_MAX (0xE8C-(DEFUSE_BYTE_UNIT*0x7D))
+#endif
+
+// Empty OTP w/ JTAG disabled
+//#define RESET_RANGE_MIN (RESET_RANGE_MAX-(DEFUSE_BYTE_UNIT*0x40))
+//#define RESET_RANGE_MAX (0xE8C-(DEFUSE_BYTE_UNIT*0))
 
 void nrst_sense_callback(uint gpio, uint32_t events) 
 {
@@ -158,6 +173,8 @@ void nrst_sense_callback(uint gpio, uint32_t events)
 
 void nrst_sense_set(bool is_on)
 {
+    gpio_set_function(PIN_NRST, GPIO_FUNC_SIO);
+
     if (is_on == nrst_sense_state) {
         return;
     }
@@ -222,16 +239,18 @@ void slow_one_time_init()
     // We use two statemachines: one for the debug monitor, and one for the EXI injecting.
     debug_gpio_monitor_parallel_sm = pio_claim_unused_sm(pio, true);
     exi_inject_sm = pio_claim_unused_sm(pio_exi, true);
+    //reset_cycle_accurate_sm = pio_claim_unused_sm(pio_exi, true);
 
     // The exi inject statemachine is only used during de_Fusing, it just watches
     // for 64 EXI clks and shoves the line high so the SDboot bit gets read as 1.
     exi_inject_offset = pio_add_program(pio_exi, &exi_inject_program);
+    //reset_cycle_accurate_offset = pio_add_program(pio_exi, &reset_cycle_accurate_program);
 
     // The debug monitor has two programs: The parallel monitor, used to check boot0
     // codes, and the serial monitor, which is used for the text console in minute/etc
     debug_gpio_monitor_parallel_offset = pio_add_program(pio, &debug_gpio_monitor_parallel_program);
     debug_gpio_monitor_serial_offset = pio_add_program(pio, &debug_gpio_monitor_serial_program);
-
+    
     // Debug monitor can start early, it's basically always on.
     debug_gpio_monitor_parallel_program_init(pio, debug_gpio_monitor_parallel_sm, debug_gpio_monitor_parallel_offset, PIN_DEBUGLED_BASE, PIN_SERIALOUT_BASE, 1.0);
     pio_sm_set_enabled(pio, debug_gpio_monitor_parallel_sm, true);
@@ -265,6 +284,9 @@ void do_normal_reset()
 
 void de_fuse()
 {
+    //reset_cycle_accurate_program_init(pio_exi, reset_cycle_accurate_sm, reset_cycle_accurate_offset, PIN_NRST, 0, 1.0);
+    //pio_sm_set_enabled(pio_exi, reset_cycle_accurate_sm, false);
+
     // Disable NRST sensing and take control of the line.
     nrst_sense_set(false);
 
@@ -286,7 +308,8 @@ void de_fuse()
         pio_sm_set_enabled(pio, debug_gpio_monitor_parallel_sm, true);
         exi_inject_program_init(pio_exi, exi_inject_sm, exi_inject_offset, PIN_CLK, PIN_DATA_BASE, 1.0);
 
-        // Read OTP fully at least once and then hold
+        // Read OTP fully at least once and then hold.
+        // We do this twice just in case.
         // This boot does not need EXI injection, because
         // we try to make sure it ends before it hits boot1.
         gpio_put(PIN_NRST, false);
@@ -295,7 +318,17 @@ void de_fuse()
             __asm volatile ("\n");
         }
         gpio_put(PIN_NRST, true);
-        for(int i = 0; i < 0x800; i++)
+        for(int i = 0; i < 0x4000; i++)
+        {
+            __asm volatile ("\n");
+        }
+        gpio_put(PIN_NRST, false);
+        for(int i = 0; i < 0x100; i++)
+        {
+            __asm volatile ("\n");
+        }
+        gpio_put(PIN_NRST, true);
+        for(int i = 0; i < 0x4000; i++)
         {
             __asm volatile ("\n");
         }
@@ -305,7 +338,7 @@ void de_fuse()
             __asm volatile ("\n");
         }
 
-
+#if 1
         // The actual timing-sensitive part...
         // This won't even reach boot1, it just has to get the fuse
         // readout counter to a value >0x380 so that the next
@@ -321,7 +354,19 @@ void de_fuse()
         // OK, we're done
         gpio_put(PIN_NRST, false);
         restore_interrupts(cookie);
+#endif
 
+#if 1
+        //reset_cycle_accurate_program_reset(pio_exi, reset_cycle_accurate_sm, reset_cycle_accurate_offset, PIN_NRST, reset_attempt, 1.0);
+        //pio_sm_set_enabled(pio_exi, reset_cycle_accurate_sm, true);
+        //sleep_ms(1);
+        /*for(int i = 0; i < 0x210; i++)
+        {
+            __asm volatile ("\n");
+        }*/
+        //pio_sm_set_enabled(pio_exi, reset_cycle_accurate_sm, false);
+        gpio_set_function(PIN_NRST, GPIO_FUNC_SIO);
+#endif
 
         // Clear out the FIFO so our results readout is clean.
         for (int i = 0; i < 0x20; i++)
@@ -412,6 +457,7 @@ void de_fuse()
         //sleep_ms(1000);
     }
 
+#ifndef DEFUSE_JTAG
     // TODO: do this after trying a NAND boot1?
     // If no SD card is inserted, or an invalid one is inserted, boot0 stalls.
     if (!winner && error_code == 0x00 && !only_zeros) {
@@ -423,6 +469,7 @@ void de_fuse()
         printf("[Pico] Wii U doesn't seem to be powered on?\n");
         next_wiiu_state = WIIU_CHECK_IF_POWERED_OFF;
     }
+#endif
 }
 
 void post_de_fuse()
