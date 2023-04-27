@@ -24,12 +24,10 @@ PIO pio_exi;
 int debug_gpio_monitor_dmachan;
 dma_channel_config debug_gpio_monitor_dmacfg;
 uint debug_gpio_monitor_parallel_sm;
-uint reset_cycle_accurate_sm;
 uint exi_inject_sm;
 uint exi_inject_offset;
 uint debug_gpio_monitor_parallel_offset;
 uint debug_gpio_monitor_serial_offset;
-uint reset_cycle_accurate_offset;
 
 #define MONITOR_SERIAL_DATA (0)
 #define MONITOR_SERIAL_TEXT (1)
@@ -139,8 +137,12 @@ bool nrst_sense_state = false;
 #define DEFUSE_BYTE_UNIT (0x4)
 
 #ifdef DEFUSE_JTAG
-#define RESET_RANGE_MIN (RESET_RANGE_MAX-(DEFUSE_BYTE_UNIT*0x20))
-#define RESET_RANGE_MAX (0xE9C)
+// Start from 0 and increase this to make it boot slightly faster,
+// instead of just overshooting it for the guarantee
+#define JTAG_VARIANCE (0)
+
+#define RESET_RANGE_MIN (RESET_RANGE_MAX-(DEFUSE_BYTE_UNIT/2))
+#define RESET_RANGE_MAX (0xEA8-JTAG_VARIANCE)
 #else
 #define RESET_RANGE_MIN (RESET_RANGE_MAX-(DEFUSE_BYTE_UNIT*0x40))
 #define RESET_RANGE_MAX (0xE8C-(DEFUSE_BYTE_UNIT*0x7D))
@@ -239,12 +241,10 @@ void slow_one_time_init()
     // We use two statemachines: one for the debug monitor, and one for the EXI injecting.
     debug_gpio_monitor_parallel_sm = pio_claim_unused_sm(pio, true);
     exi_inject_sm = pio_claim_unused_sm(pio_exi, true);
-    //reset_cycle_accurate_sm = pio_claim_unused_sm(pio_exi, true);
 
     // The exi inject statemachine is only used during de_Fusing, it just watches
     // for 64 EXI clks and shoves the line high so the SDboot bit gets read as 1.
     exi_inject_offset = pio_add_program(pio_exi, &exi_inject_program);
-    //reset_cycle_accurate_offset = pio_add_program(pio_exi, &reset_cycle_accurate_program);
 
     // The debug monitor has two programs: The parallel monitor, used to check boot0
     // codes, and the serial monitor, which is used for the text console in minute/etc
@@ -284,9 +284,6 @@ void do_normal_reset()
 
 void de_fuse()
 {
-    //reset_cycle_accurate_program_init(pio_exi, reset_cycle_accurate_sm, reset_cycle_accurate_offset, PIN_NRST, 0, 1.0);
-    //pio_sm_set_enabled(pio_exi, reset_cycle_accurate_sm, false);
-
     // Disable NRST sensing and take control of the line.
     nrst_sense_set(false);
 
@@ -354,18 +351,6 @@ void de_fuse()
         // OK, we're done
         gpio_put(PIN_NRST, false);
         restore_interrupts(cookie);
-#endif
-
-#if 1
-        //reset_cycle_accurate_program_reset(pio_exi, reset_cycle_accurate_sm, reset_cycle_accurate_offset, PIN_NRST, reset_attempt, 1.0);
-        //pio_sm_set_enabled(pio_exi, reset_cycle_accurate_sm, true);
-        //sleep_ms(1);
-        /*for(int i = 0; i < 0x210; i++)
-        {
-            __asm volatile ("\n");
-        }*/
-        //pio_sm_set_enabled(pio_exi, reset_cycle_accurate_sm, false);
-        gpio_set_function(PIN_NRST, GPIO_FUNC_SIO);
 #endif
 
         // Clear out the FIFO so our results readout is clean.
@@ -457,6 +442,7 @@ void de_fuse()
         //sleep_ms(1000);
     }
 
+    // JTAG has a much smaller window
 #ifndef DEFUSE_JTAG
     // TODO: do this after trying a NAND boot1?
     // If no SD card is inserted, or an invalid one is inserted, boot0 stalls.
