@@ -422,6 +422,8 @@ class Miniterm(object):
         self.tx_decoder = None
         self.tx_encoder = None
         self.serial_data_nowipe = [0]*16
+        self.serial_data_lastline = []
+        self.check_upload = False
 
     def _start_reader(self):
         """Start reader thread"""
@@ -514,11 +516,29 @@ class Miniterm(object):
                 if data:
                     for b in list(data):
                         self.serial_data_nowipe += [b]
-                        self.serial_data_nowipe = self.serial_data_nowipe[-16:]
+                        self.serial_data_nowipe = self.serial_data_nowipe[-32:]
+                        self.serial_data_lastline += [b]
+                        if b == ord('\n'):
+                            self.serial_data_lastline = []
 
                         #print (self.serial_data_nowipe[-12:], self.serial_data_nowipe[-12:] == MAGIC_UPLD)
                         if self.serial_data_nowipe[-12:] == MAGIC_UPLD:
-                            self.upload_file_by_name(os.getenv("MINUTE_MINUTE_FW_IMG"))
+                            self.check_upload = True
+                            self.serial_data_lastline = []
+                        if self.check_upload:
+                            last_line_str = bytes(self.serial_data_lastline).decode("utf-8")
+                            if last_line_str == "sdmc:/fw.img":
+                                self.check_upload = False
+                                self.upload_file_by_name(os.getenv("MINUTE_MINUTE_FW_IMG"))
+                            elif last_line_str == "sdmc:/ios.patch":
+                                self.check_upload = False
+                                self.upload_file_by_name(os.getenv("MINUTE_MINUTE_IOS_PATCH"))
+                            elif last_line_str == "sdmc:/ios.img":
+                                self.check_upload = False
+                                self.upload_file_by_name(os.getenv("MINUTE_MINUTE_IOS_IMG"))
+                            elif last_line_str == "sdmc:/wiiu/ios_plugins/wafel_core.ipx":
+                                self.check_upload = False
+                                self.upload_file_by_name(os.getenv("MINUTE_MINUTE_IOS_PLG"))
                     if self.raw:
                         self.console.write_bytes(data)
                     else:
@@ -946,7 +966,7 @@ def main(default_port=None, default_baudrate=115200, default_rts=None, default_d
 
     group.add_argument(
         '--raw',
-        action='store_true',
+        action='store_false',
         help='Do no apply any encodings/transformations',
         default=True)
 
