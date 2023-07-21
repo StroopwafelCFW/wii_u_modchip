@@ -298,149 +298,153 @@ void de_fuse()
     int only_zeros = 1;
     for (int reset_attempt = RESET_RANGE_MAX; reset_attempt >= RESET_RANGE_MIN; reset_attempt--)
     {
-        only_zeros = 1;
-        winner = 0;
-        error_code = 0;
-        printf("Starting... %u\n", reset_attempt);
-        pio_sm_set_enabled(pio, debug_gpio_monitor_parallel_sm, true);
-        exi_inject_program_init(pio_exi, exi_inject_sm, exi_inject_offset, PIN_CLK, PIN_DATA_BASE, 1.0);
-
-        // Read OTP fully at least once and then hold.
-        // We do this twice just in case.
-        // This boot does not need EXI injection, because
-        // we try to make sure it ends before it hits boot1.
-        gpio_put(PIN_NRST, false);
-        for(int i = 0; i < 0x100; i++)
+        for (int which = 0; which < 2; which++)
         {
-            __asm volatile ("\n");
-        }
-        gpio_put(PIN_NRST, true);
-        for(int i = 0; i < 0x4000; i++)
-        {
-            __asm volatile ("\n");
-        }
-        gpio_put(PIN_NRST, false);
-        for(int i = 0; i < 0x100; i++)
-        {
-            __asm volatile ("\n");
-        }
-        gpio_put(PIN_NRST, true);
-        for(int i = 0; i < 0x4000; i++)
-        {
-            __asm volatile ("\n");
-        }
-        gpio_put(PIN_NRST, false);
-        for(int i = 0; i < 0x100; i++)
-        {
-            __asm volatile ("\n");
-        }
+            only_zeros = 1;
+            winner = 0;
+            error_code = 0;
+            printf("Starting... %u:%u\n", reset_attempt, which);
+            pio_sm_set_enabled(pio, debug_gpio_monitor_parallel_sm, true);
+            exi_inject_program_init(pio_exi, exi_inject_sm, exi_inject_offset, PIN_CLK, PIN_DATA_BASE, 1.0);
 
-#if 1
-        // The actual timing-sensitive part...
-        // This won't even reach boot1, it just has to get the fuse
-        // readout counter to a value >0x380 so that the next
-        // boot is de_Fused.
-        uint32_t cookie = save_and_disable_interrupts();
-        gpio_put(PIN_NRST, true);
-
-        for(int i = 0; i < reset_attempt; i++)
-        {
-            __asm volatile ("\n");
-        }
-
-        // OK, we're done
-        gpio_put(PIN_NRST, false);
-        restore_interrupts(cookie);
-#endif
-
-        // Clear out the FIFO so our results readout is clean.
-        for (int i = 0; i < 0x20; i++)
-        {
-            pio_sm_get(pio, debug_gpio_monitor_parallel_sm);
-        }
-
-        // Start DMAing results while we're held in reset
-        memset(read_debug_gpios, 0, sizeof(read_debug_gpios));
-        dma_channel_configure(
-            debug_gpio_monitor_dmachan,
-            &debug_gpio_monitor_dmacfg,
-            read_debug_gpios,
-            &pio->rxf[debug_gpio_monitor_parallel_sm],
-            sizeof(read_debug_gpios),
-            true // start immediately
-        );
-
-        // Make extra sure we've held in reset long enough
-        // for the not-eFuse things on the chip that actually 
-        // reset correctly lol
-        for(int i = 0; i < 0x100; i++)
-        {
-            __asm volatile ("\n");
-        }
-
-        // Start EXI injection and deassert reset
-        pio_sm_set_enabled(pio_exi, exi_inject_sm, true);
-        gpio_put(PIN_NRST, true);
-
-        // Give it enough time to reach boot1, then
-        // disable all the debug monitor and EXI injector so we
-        // can check the results
-        if (reset_attempt <= RESET_RANGE_MIN+4) {
-            sleep_ms(500);
-        }
-        sleep_ms(200);
-        dma_channel_abort(debug_gpio_monitor_dmachan);
-        pio_sm_set_enabled(pio, debug_gpio_monitor_parallel_sm, false);
-        pio_sm_set_enabled(pio_exi, exi_inject_sm, false);
-
-        // Winner?
-        printf("Results:\n");
-        for (int i = 0; i < 0x100; i++)
-        {
-            if (read_debug_gpios[i]) {
-                only_zeros = 0;
+            // Read OTP fully at least once and then hold.
+            // We do this twice just in case.
+            // This boot does not need EXI injection, because
+            // we try to make sure it ends before it hits boot1.
+            gpio_put(PIN_NRST, false);
+            for(int i = 0; i < 0x100; i++)
+            {
+                __asm volatile ("\n");
             }
-            if (i && read_debug_gpios[i] == read_debug_gpios[i-1]) {
-                break;
+            gpio_put(PIN_NRST, true);
+            for(int i = 0; i < 0x4000; i++)
+            {
+                __asm volatile ("\n");
             }
-            if (read_debug_gpios[i] == 0x88 || read_debug_gpios[i] == 0x25) {
-                winner = 1;
+            gpio_put(PIN_NRST, false);
+            for(int i = 0; i < 0x100; i++)
+            {
+                __asm volatile ("\n");
             }
-            if (read_debug_gpios[i] == 0xE1) {
-                winner = 0;
+            gpio_put(PIN_NRST, true);
+            for(int i = 0; i < 0x4000; i++)
+            {
+                __asm volatile ("\n");
+            }
+            gpio_put(PIN_NRST, false);
+            for(int i = 0; i < 0x100; i++)
+            {
+                __asm volatile ("\n");
             }
 
-            if (read_debug_gpios[i] >= 0xC0) {
-                error_code = read_debug_gpios[i];
-            }
-        }
+    #if 1
+            // The actual timing-sensitive part...
+            // This won't even reach boot1, it just has to get the fuse
+            // readout counter to a value >0x380 so that the next
+            // boot is de_Fused.
+            uint32_t cookie = save_and_disable_interrupts();
+            gpio_put(PIN_NRST, true);
 
-        if (winner) {
-            printf("Winner! 0x%x\n", 0x10000 - reset_attempt);
-            
+            for(int i = 0; i < reset_attempt; i++)
+            {
+                __asm volatile ("\n");
+            }
+
+            // OK, we're done
+            gpio_put(PIN_NRST, false);
+            restore_interrupts(cookie);
+    #endif
+
+            // Clear out the FIFO so our results readout is clean.
+            for (int i = 0; i < 0x20; i++)
+            {
+                pio_sm_get(pio, debug_gpio_monitor_parallel_sm);
+            }
+
+            // Start DMAing results while we're held in reset
+            memset(read_debug_gpios, 0, sizeof(read_debug_gpios));
+            dma_channel_configure(
+                debug_gpio_monitor_dmachan,
+                &debug_gpio_monitor_dmacfg,
+                read_debug_gpios,
+                &pio->rxf[debug_gpio_monitor_parallel_sm],
+                sizeof(read_debug_gpios),
+                true // start immediately
+            );
+
+            // Make extra sure we've held in reset long enough
+            // for the not-eFuse things on the chip that actually 
+            // reset correctly lol
+            for(int i = 0; i < 0x100; i++)
+            {
+                __asm volatile ("\n");
+            }
+
+            // Start EXI injection and deassert reset
+            pio_sm_set_enabled(pio_exi, exi_inject_sm, which ? false : true);
+            gpio_put(PIN_NRST, true);
+
+            // Give it enough time to reach boot1, then
+            // disable all the debug monitor and EXI injector so we
+            // can check the results
+            if (reset_attempt <= RESET_RANGE_MIN+4) {
+                sleep_ms(500);
+            }
+            sleep_ms(200);
+            dma_channel_abort(debug_gpio_monitor_dmachan);
+            pio_sm_set_enabled(pio, debug_gpio_monitor_parallel_sm, false);
+            pio_sm_set_enabled(pio_exi, exi_inject_sm, false);
+
+            // Winner?
+            printf("Results:\n");
             for (int i = 0; i < 0x100; i++)
             {
-                printf("%02x\n", read_debug_gpios[i]);
+                if (read_debug_gpios[i]) {
+                    only_zeros = 0;
+                }
                 if (i && read_debug_gpios[i] == read_debug_gpios[i-1]) {
                     break;
                 }
-            }
-            next_wiiu_state = WIIU_STATE_DEFUSED;
-            break;
-        }
-        else {
-            for (int i = 0; i < 0x100; i++)
-            {
-                printf("%02x\n", read_debug_gpios[i]);
-                if (i && read_debug_gpios[i] == read_debug_gpios[i-1]) {
-                    break;
+                if (read_debug_gpios[i] == 0x88) { // || read_debug_gpios[i] == 0x25
+                    winner = 1;
+                }
+                if (read_debug_gpios[i] == 0xE1) {
+                    winner = 0;
+                }
+
+                if (read_debug_gpios[i] >= 0xC0) {
+                    error_code = read_debug_gpios[i];
                 }
             }
-            printf("Error code: %02x\n", error_code);
-        }
 
+            if (winner) {
+                printf("Winner! 0x%x\n", 0x10000 - reset_attempt);
+                
+                for (int i = 0; i < 0x100; i++)
+                {
+                    printf("%02x\n", read_debug_gpios[i]);
+                    if (i && read_debug_gpios[i] == read_debug_gpios[i-1]) {
+                        break;
+                    }
+                }
+                next_wiiu_state = WIIU_STATE_DEFUSED;
+                goto glitch_success;
+            }
+            else {
+                for (int i = 0; i < 0x100; i++)
+                {
+                    printf("%02x\n", read_debug_gpios[i]);
+                    if (i && read_debug_gpios[i] == read_debug_gpios[i-1]) {
+                        break;
+                    }
+                }
+                printf("Error code: %02x\n", error_code);
+            }
+        }
         //sleep_ms(1000);
     }
+
+glitch_success:
 
     // JTAG has a much smaller window
 #ifndef DEFUSE_JTAG
