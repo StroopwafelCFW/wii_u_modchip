@@ -401,15 +401,16 @@ void de_fuse()
             {
                 if (read_debug_gpios[i]) {
                     only_zeros = 0;
-                }
-                if (i && read_debug_gpios[i] == read_debug_gpios[i-1]) {
-                    break;
-                }
-                if (read_debug_gpios[i] == 0x88) { // || read_debug_gpios[i] == 0x25
-                    winner = 1;
-                }
-                if (read_debug_gpios[i] == 0xE1) {
-                    winner = 0;
+
+                    if (i && read_debug_gpios[i] == read_debug_gpios[i-1]) {
+                        break;
+                    }
+                    if (read_debug_gpios[i] == 0x88) { // || read_debug_gpios[i] == 0x25
+                        winner = 1;
+                    }
+                    else if (read_debug_gpios[i] == 0xE1) {
+                        winner = 0;
+                    }
                 }
 
                 if (read_debug_gpios[i] >= 0xC0) {
@@ -438,7 +439,13 @@ void de_fuse()
                         break;
                     }
                 }
+
                 printf("Error code: %02x\n", error_code);
+
+                if (error_code == 0xC3 || error_code == 0xD2) { // No or wrong SD
+                    error_code = 0x00;
+                    goto glitch_success;
+                }
             }
         }
         //sleep_ms(1000);
@@ -449,15 +456,16 @@ glitch_success:
     // JTAG has a much smaller window
 #ifndef DEFUSE_JTAG
     // TODO: do this after trying a NAND boot1?
-    // If no SD card is inserted, or an invalid one is inserted, boot0 stalls.
-    if (!winner && error_code == 0x00 && !only_zeros) {
-        printf("SD card not valid or not inserted, doing a normal boot.\n");
-        do_normal_reset();
-    }
-
-    if (!winner && only_zeros) {
-        printf("[Pico] Wii U doesn't seem to be powered on?\n");
-        next_wiiu_state = WIIU_CHECK_IF_POWERED_OFF;
+    if (!winner) {
+        if (only_zeros) {
+            printf("[Pico] Wii U doesn't seem to be powered on?\n");
+            next_wiiu_state = WIIU_CHECK_IF_POWERED_OFF;
+        }
+        // If no SD card is inserted, or an invalid one is inserted, boot0 stalls.
+        else if (error_code == 0x00) {
+            printf("SD card not valid or not inserted, doing a normal boot.\n");
+            do_normal_reset();
+        }
     }
 #endif
 }
