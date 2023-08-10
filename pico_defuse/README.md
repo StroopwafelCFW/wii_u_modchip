@@ -33,7 +33,7 @@ Based on [PicoBoot](https://github.com/webhdx/PicoBoot)
 | 3V3(OUT)       |  TP122             | Always-On 3.3v |
 
 ![wiring diagram](wiring.png)
-Thanks to JadeStrike for the wiring diagram
+(Thanks to JadeStrike for the wiring diagram)
 
 For wiring to the Pico, I highly suggest using [~38AWG enameled magnet wire](https://www.amazon.com/BNTECHGO-AWG-Magnet-Wire-Transformers/dp/B0823C7C2H) (**not** solid core or stranded). Some of the test points are close to the GPU voltage rails (which are high amperage); A poor solder joint breaking off and touching something else can be catastrophic.
 
