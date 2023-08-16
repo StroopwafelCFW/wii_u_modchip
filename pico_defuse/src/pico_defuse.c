@@ -269,13 +269,44 @@ void do_normal_reset()
     // Disable NRST sensing and take control of the line.
     nrst_sense_set(false);
 
+    // Read OTP fully at least once and then hold.
+    // We do this twice just in case.
+    // This boot does not need EXI injection, because
+    // we try to make sure it ends before it hits boot1.
     gpio_put(PIN_NRST, false);
     for(int i = 0; i < 0x100; i++)
     {
         __asm volatile ("\n");
     }
     gpio_put(PIN_NRST, true);
+    for(int i = 0; i < 0x4000; i++) // boot0 is running for 0x4000 ticks
+    {
+        __asm volatile ("\n");
+    }
+    gpio_put(PIN_NRST, false);
     for(int i = 0; i < 0x100; i++)
+    {
+        __asm volatile ("\n");
+    }
+    gpio_put(PIN_NRST, true);
+    for(int i = 0; i < 0x4000; i++) // boot0 is running for 0x4000 ticks
+    {
+        __asm volatile ("\n");
+    }
+    gpio_put(PIN_NRST, false);
+    for(int i = 0; i < 0x100; i++)
+    {
+        __asm volatile ("\n");
+    }
+
+    // Hopefully any de_Fuse quirks are flushed out, do the real reset
+    gpio_put(PIN_NRST, false);
+    for(int i = 0; i < 0x100; i++)
+    {
+        __asm volatile ("\n");
+    }
+    gpio_put(PIN_NRST, true);
+    for(int i = 0; i < 0x4000; i++)
     {
         __asm volatile ("\n");
     }
@@ -303,6 +334,12 @@ void de_fuse()
             only_zeros = 1;
             winner = 0;
             error_code = 0;
+
+            // Make sure the last attempt does not give a false success
+            if (reset_attempt == RESET_RANGE_MIN && which) {
+                break;
+            }
+
             printf("Starting... %u:%u\n", reset_attempt, which);
             pio_sm_set_enabled(pio, debug_gpio_monitor_parallel_sm, true);
             exi_inject_program_init(pio_exi, exi_inject_sm, exi_inject_offset, PIN_CLK, PIN_DATA_BASE, 1.0);
@@ -647,6 +684,7 @@ void main()
 
         case WIIU_STATE_NEEDS_DEFUSE:
             de_fuse();
+            //next_wiiu_state = WIIU_STATE_DEFUSED;
             break;
 
         case WIIU_STATE_DEFUSED:
