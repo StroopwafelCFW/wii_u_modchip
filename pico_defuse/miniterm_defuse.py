@@ -539,6 +539,9 @@ class Miniterm(object):
                             elif last_line_str == "sdmc:/wiiu/ios_plugins/wafel_core.ipx":
                                 self.check_upload = False
                                 self.upload_file_by_name(os.getenv("MINUTE_MINUTE_IOS_PLG"))
+                            elif last_line_str == "sdmc:/boot1_slccmpt.img":
+                                self.check_upload = False
+                                self.upload_file_by_name(os.getenv("MINUTE_MINUTE_BOOT1_IMG"))
                     if self.raw:
                         self.console.write_bytes(data)
                     else:
