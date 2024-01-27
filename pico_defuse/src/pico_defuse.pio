@@ -148,7 +148,7 @@ stall:
         sm_config_set_clkdiv(&c, div);
 
         pio_sm_set_consecutive_pindirs(pio, sm, pin_clk, 1, false);
-        pio_sm_set_consecutive_pindirs(pio, sm, pin_data, 4, true);
+        pio_sm_set_consecutive_pindirs(pio, sm, pin_data, 4, false);
 
         sm_config_set_in_shift(&c, false, true, 8);
         sm_config_set_out_shift(&c, false, false, 8);

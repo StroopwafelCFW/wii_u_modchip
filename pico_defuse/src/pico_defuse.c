@@ -139,7 +139,7 @@ bool nrst_sense_state = false;
 #ifdef DEFUSE_JTAG
 // Start from 0 and increase this to make it boot slightly faster,
 // instead of just overshooting it for the guarantee
-#define JTAG_VARIANCE (0)
+#define JTAG_VARIANCE (1)
 
 #define RESET_RANGE_MIN (RESET_RANGE_MAX-(DEFUSE_BYTE_UNIT/2))
 #define RESET_RANGE_MAX (0xEA8-JTAG_VARIANCE)
@@ -496,6 +496,8 @@ glitch_success:
         printf("[Pico] Wii U doesn't seem to be powered on?\n");
         next_wiiu_state = WIIU_CHECK_IF_POWERED_OFF;
     }
+#else
+    ;
 #endif
 }
 
