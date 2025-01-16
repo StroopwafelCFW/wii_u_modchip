@@ -59,6 +59,9 @@
 				(type "core")
 				(color "Polyimide")
 				(thickness 0.03)
+				(material "FR4")
+				(epsilon_r 4.5)
+				(loss_tangent 0.02)
 			)
 			(layer "B.Cu"
 				(type "copper")
@@ -233,7 +236,7 @@
 		(property "Reference" ""
 			(at 0 0 0)
 			(layer "F.SilkS")
-			(uuid "b1e1e047-4bd6-4593-8098-e4be3961b385")
+			(uuid "d6fd272d-f153-4477-896b-1ab22c706504")
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -244,7 +247,7 @@
 		(property "Value" ""
 			(at 0 0 0)
 			(layer "F.Fab")
-			(uuid "98d38120-50bb-4964-b4f5-6096940e3bf8")
+			(uuid "06261468-3acc-4f16-b342-3b26dc7a7818")
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -306,7 +309,7 @@
 				(allow_two_segments yes)
 				(prefer_zone_connections yes)
 			)
-			(uuid "249440e2-42b1-4bfa-ac90-28aaa153a471")
+			(uuid "9f8cc409-1d8e-4dd9-a6c3-0fe1bd2fda1f")
 		)
 	)
 	(footprint ""
@@ -379,7 +382,7 @@
 			(remove_unused_layers no)
 			(net 4 "GND")
 			(zone_connect 2)
-			(uuid "249440e2-42b1-4bfa-ac90-28aaa153a471")
+			(uuid "399ffe20-b0ea-4884-aa93-a23f3863a76a")
 		)
 	)
 	(footprint "TestPoint:TestPoint_Pad_D1.5mm"
@@ -630,7 +633,7 @@
 		(property "Reference" ""
 			(at 0 0 0)
 			(layer "F.SilkS")
-			(uuid "b1e1e047-4bd6-4593-8098-e4be3961b385")
+			(uuid "7856cef7-3151-4e65-a0f4-a435f7e5a057")
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -641,7 +644,7 @@
 		(property "Value" ""
 			(at 0 0 0)
 			(layer "F.Fab")
-			(uuid "98d38120-50bb-4964-b4f5-6096940e3bf8")
+			(uuid "d270ede8-8bf8-420f-ba82-2c1b5ad1462f")
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -703,7 +706,7 @@
 				(allow_two_segments yes)
 				(prefer_zone_connections yes)
 			)
-			(uuid "249440e2-42b1-4bfa-ac90-28aaa153a471")
+			(uuid "d5fc760a-a146-4a42-ab12-c33c03dbcb14")
 		)
 	)
 	(footprint "CustomFootprints:RPi_Pico_SMD"
@@ -2490,7 +2493,7 @@
 			(remove_unused_layers no)
 			(net 4 "GND")
 			(zone_connect 2)
-			(uuid "249440e2-42b1-4bfa-ac90-28aaa153a471")
+			(uuid "cb744d03-ec2e-4f88-a69d-a4d5f31e55eb")
 		)
 	)
 	(footprint ""
@@ -2500,7 +2503,7 @@
 		(property "Reference" ""
 			(at 0 0 0)
 			(layer "F.SilkS")
-			(uuid "b1e1e047-4bd6-4593-8098-e4be3961b385")
+			(uuid "c7ab67ed-6708-4d3a-a0a8-a67e874bc0ec")
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -2511,7 +2514,7 @@
 		(property "Value" ""
 			(at 0 0 0)
 			(layer "F.Fab")
-			(uuid "98d38120-50bb-4964-b4f5-6096940e3bf8")
+			(uuid "e5768618-51d7-4c40-a826-19395a8c83a5")
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -2573,7 +2576,7 @@
 				(allow_two_segments yes)
 				(prefer_zone_connections yes)
 			)
-			(uuid "249440e2-42b1-4bfa-ac90-28aaa153a471")
+			(uuid "939a4ec9-0a45-496a-b617-8d0861957e30")
 		)
 	)
 	(footprint ""
@@ -2656,7 +2659,7 @@
 				(allow_two_segments yes)
 				(prefer_zone_connections yes)
 			)
-			(uuid "249440e2-42b1-4bfa-ac90-28aaa153a471")
+			(uuid "adce13b3-7c1e-4bd9-ba9c-b8907e9e8e00")
 		)
 	)
 	(footprint ""
@@ -2731,7 +2734,7 @@
 			(net 4 "GND")
 			(zone_connect 2)
 			(thermal_bridge_angle 45)
-			(uuid "249440e2-42b1-4bfa-ac90-28aaa153a471")
+			(uuid "6f80e3d9-e676-4776-aadb-215e2faca754")
 		)
 	)
 	(footprint ""
@@ -2741,7 +2744,7 @@
 		(property "Reference" ""
 			(at 0 0 0)
 			(layer "F.SilkS")
-			(uuid "b1e1e047-4bd6-4593-8098-e4be3961b385")
+			(uuid "42b3b7b5-4f60-4384-9dc2-546557ec6b98")
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -2752,7 +2755,7 @@
 		(property "Value" ""
 			(at 0 0 0)
 			(layer "F.Fab")
-			(uuid "98d38120-50bb-4964-b4f5-6096940e3bf8")
+			(uuid "83ac7290-3d68-4b8b-968c-206624095367")
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -2814,7 +2817,7 @@
 				(allow_two_segments yes)
 				(prefer_zone_connections yes)
 			)
-			(uuid "249440e2-42b1-4bfa-ac90-28aaa153a471")
+			(uuid "ab3129c6-5a81-447f-b66e-f21dda9177c2")
 		)
 	)
 	(footprint ""
@@ -2824,7 +2827,7 @@
 		(property "Reference" ""
 			(at 0 0 0)
 			(layer "F.SilkS")
-			(uuid "b1e1e047-4bd6-4593-8098-e4be3961b385")
+			(uuid "0a4b9dc6-79e2-4d0b-9dd9-bcf258dc83f3")
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -2835,7 +2838,7 @@
 		(property "Value" ""
 			(at 0 0 0)
 			(layer "F.Fab")
-			(uuid "98d38120-50bb-4964-b4f5-6096940e3bf8")
+			(uuid "d5d99fec-477b-414c-93ea-fabc79dd442c")
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -2897,7 +2900,7 @@
 				(allow_two_segments yes)
 				(prefer_zone_connections yes)
 			)
-			(uuid "249440e2-42b1-4bfa-ac90-28aaa153a471")
+			(uuid "08ad56eb-8434-4e63-8a86-0776d32fc4ad")
 		)
 	)
 	(footprint "wiiu:wii-single-via-0.5mm"
@@ -3001,7 +3004,7 @@
 				(allow_two_segments yes)
 				(prefer_zone_connections yes)
 			)
-			(uuid "249440e2-42b1-4bfa-ac90-28aaa153a471")
+			(uuid "869caf6a-8658-4bdf-9191-9acd6155f21e")
 		)
 	)
 	(footprint "TestPoint:TestPoint_Pad_D1.5mm"
@@ -3252,7 +3255,7 @@
 		(property "Reference" ""
 			(at 0 0 0)
 			(layer "F.SilkS")
-			(uuid "b1e1e047-4bd6-4593-8098-e4be3961b385")
+			(uuid "3d580c6e-77cc-41a9-8fee-65220a226d93")
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -3263,7 +3266,7 @@
 		(property "Value" ""
 			(at 0 0 0)
 			(layer "F.Fab")
-			(uuid "98d38120-50bb-4964-b4f5-6096940e3bf8")
+			(uuid "264d9753-794e-40cb-b4cc-a65db69f7ace")
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -3325,7 +3328,7 @@
 				(allow_two_segments yes)
 				(prefer_zone_connections yes)
 			)
-			(uuid "249440e2-42b1-4bfa-ac90-28aaa153a471")
+			(uuid "62a15a82-f33f-46aa-8a4d-864946883d58")
 		)
 	)
 	(gr_line
@@ -3724,6 +3727,32 @@
 		)
 		(layer "Edge.Cuts")
 		(uuid "f7061593-de34-48e2-aa04-48af1bb38626")
+	)
+	(gr_text "Flex by Lazr1026\nde_Fuse by Shinyquagsire23\n"
+		(at 142.2 66.75 0)
+		(layer "B.SilkS")
+		(uuid "c4007103-e897-4406-bded-da59d7905a37")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.3)
+				(bold yes)
+			)
+			(justify left bottom mirror)
+		)
+	)
+	(gr_text "WUP-50 boards ONLY!"
+		(at 110.12 76.61 0)
+		(layer "F.SilkS")
+		(uuid "4d2810e7-c814-4a69-84a8-56b727f1fbec")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.25)
+				(bold yes)
+			)
+			(justify left bottom)
+		)
 	)
 	(segment
 		(start 135.08 69.46)
