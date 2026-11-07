@@ -31,6 +31,22 @@ if (TARGET tinyusb_device)
 
     pico_add_extra_outputs(pico_defuse)
 
+    # Serial-only build for consoles that don't need de_Fuse (e.g. ISFShax):
+    # no glitching, host can reset the console via baud rate 1201.
+    add_executable(pico_serial src/pico_defuse.c)
+    pico_generate_pio_header(pico_serial ${CMAKE_CURRENT_LIST_DIR}/src/pico_defuse.pio)
+    pico_set_program_name(pico_serial "pico_serial")
+    pico_set_program_version(pico_serial "0.1")
+    pico_set_binary_type(pico_serial copy_to_ram)
+    pico_enable_stdio_uart(pico_serial 0)
+    pico_enable_stdio_usb(pico_serial 1)
+    target_include_directories(pico_serial PRIVATE src)
+    target_compile_definitions(pico_serial PRIVATE
+        SERIAL_ONLY=1
+        PICO_STDIO_USB_ENABLE_RESET_VIA_BAUD_RATE=0)
+    target_link_libraries(pico_serial PRIVATE pico_stdlib hardware_pio hardware_dma)
+    pico_add_extra_outputs(pico_serial)
+
 elseif(PICO_ON_DEVICE)
     message(WARNING "not building because TinyUSB submodule is not initialized in the SDK")
-endif()
+endif()
