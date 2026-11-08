@@ -544,13 +544,16 @@ void post_de_fuse()
 
 void wiiu_serial_monitor()
 {
-    if (!pio_sm_is_tx_fifo_full(pio, debug_gpio_monitor_parallel_sm))
+    // Each byte takes two FIFO words (valid marker + data), so only queue one
+    // when there is room for both. pio_sm_put() silently drops words on a full
+    // FIFO, which used to desync the marker/data pairing.
+    if (pio_sm_get_tx_fifo_level(pio, debug_gpio_monitor_parallel_sm) <= 2)
     {
         int char_in = getchar_timeout_us(0);
         if (char_in != PICO_ERROR_TIMEOUT && (char_in >= 0 && char_in <= 0xFF)) {
             //printf("[pico] char! %x\n", char_in);
-            pio_sm_put(pio, debug_gpio_monitor_parallel_sm, 0xFFFFFFFF); // serial data is valid
-            pio_sm_put(pio, debug_gpio_monitor_parallel_sm, serial_LUT[char_in]);
+            pio_sm_put_blocking(pio, debug_gpio_monitor_parallel_sm, 0xFFFFFFFF); // serial data is valid
+            pio_sm_put_blocking(pio, debug_gpio_monitor_parallel_sm, serial_LUT[char_in]);
         }
     }
     

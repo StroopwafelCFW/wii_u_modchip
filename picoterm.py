@@ -29,6 +29,7 @@ import json
 import os
 import re
 import select
+import shlex
 import shutil
 import socket
 import struct
@@ -299,11 +300,16 @@ class Engine:
         local = os.path.abspath(local)
         if not os.path.isfile(local):
             raise PicotermError('no such file: %s' % local)
-        self.serve_map[sdpath] = local
+        self.serve_map[sdpath] = (local, time.time())
         return local
 
+    SERVE_TTL = 120  # seconds a registration stays valid; stale ones must not answer later requests
+
     def _upload_request(self, sdpath):
-        local = self.serve_map.pop(sdpath, None)
+        local, when = self.serve_map.pop(sdpath, (None, 0))
+        if local and time.time() - when > self.SERVE_TTL:
+            self.msg('ignoring stale registration of %s for %s' % (local, sdpath))
+            local = None
         if not local and sdpath in LEGACY_ENV:
             local = os.environ.get(LEGACY_ENV[sdpath])
         if not local:
@@ -331,8 +337,8 @@ class Engine:
                     chunk = data[sent:sent + 512]
                     self.port.write(chunk)
                     sent += len(chunk)
-                    if sent >= next_report:
-                        sys.stderr.write('\r--- %d/%d bytes' % (sent, len(data)))
+                    if sent >= next_report and sys.stderr.isatty():
+                        sys.stderr.write('\r--- %d/%d bytes ' % (sent, len(data)))
                         sys.stderr.flush()
                         next_report = sent + 16384
                 self.port.drain()
@@ -575,7 +581,23 @@ def run_cmd(e, cmd):
     return mark
 
 
-def upload(e, local, sdpath, cmd=None):
+UPLOAD_TRIES = 3
+
+
+def upload(e, local, sdpath, cmd=None, verify=True):
+    """Upload with SD readback verification; retries on any mismatch."""
+    for attempt in range(1, UPLOAD_TRIES + 1):
+        try:
+            return upload_once(e, local, sdpath, cmd, verify)
+        except PicotermError as ex:
+            if 'no `' in str(ex) or attempt == UPLOAD_TRIES:  # missing command or out of tries
+                raise
+            e.msg('upload attempt %d/%d failed: %s; retrying' % (attempt, UPLOAD_TRIES, ex))
+            time.sleep(6)  # let minute's upload timeouts expire and stray bytes drain
+            enter_console(e, do_reset=False)
+
+
+def upload_once(e, local, sdpath, cmd=None, verify=True):
     with open(local, 'rb') as f:
         data = f.read()
     size = len(data)
@@ -595,8 +617,30 @@ def upload(e, local, sdpath, cmd=None):
         raise PicotermError('no sha1 from minute')
     if s[2][0].upper() != sha:
         raise PicotermError('sha1 mismatch: console %s, local %s' % (s[2][0], sha))
-    e.msg('upload verified: %s (%d bytes, sha1 %s)' % (sdpath, size, sha))
+    if verify:
+        verify_on_sd(e, sdpath, size, sha)
+    else:
+        e.msg('upload ok in RAM: %s (%d bytes, sha1 %s)' % (sdpath, size, sha))
     return mark
+
+
+def verify_on_sd(e, sdpath, size, sha):
+    """Read the file back from SD (minute `hash`) and compare size + sha1."""
+    mark = run_cmd(e, 'hash %s' % sdpath)
+    r = e.expect(r'command not found|hash: fail [^\r\n]*|hash: ok (\d+) ([0-9A-Fa-f]{40}) ', mark, 30)
+    if not r:
+        raise PicotermError('no answer to `hash %s`' % sdpath)
+    if 'not found' in r[0]:
+        e.msg('upload ok in RAM (%d bytes, sha1 %s); installed minute has no `hash`, '
+              'SD contents not verified' % (size, sha))
+        return
+    if 'fail' in r[0]:
+        raise PicotermError('cannot read back %s: %s' % (sdpath, r[0].strip()))
+    sd_size, sd_sha = int(r[2][0]), r[2][1].upper()
+    if sd_size != size or sd_sha != sha:
+        raise PicotermError('file on SD differs: %s is %d bytes sha1 %s, expected %d bytes sha1 %s'
+                            % (sdpath, sd_size, sd_sha, size, sha))
+    e.msg('verified on SD: %s (%d bytes, sha1 %s)' % (sdpath, size, sha))
 
 
 def sd_plugin_path(name):
@@ -707,8 +751,24 @@ def cmd_fw(args):
     check_file(args.file)
     e = get_engine(args)
     enter_console(e, do_reset=not args.no_reset)
-    # `up` exists in old and new minute: writes sdmc:/fw.img, then reloads
-    mark = upload(e, args.file, 'sdmc:/fw.img', cmd='up')
+    try:
+        upload(e, args.file, 'sdmc:/fw.img')
+    except PicotermError as ex:
+        if 'upload <path>' not in str(ex):
+            raise
+        legacy_fw(e, args)
+        return
+    mark = run_cmd(e, 'reload')
+    if not e.expect(r'minute loading', mark, 30):
+        raise PicotermError('minute did not restart after `reload`')
+    e.msg('reloaded new fw.img')
+    follow(e, args)
+    e.stop()
+
+
+def legacy_fw(e, args):
+    # old minute: `up` writes sdmc:/fw.img and reloads at once (no readback)
+    mark = upload(e, args.file, 'sdmc:/fw.img', cmd='up', verify=False)
     if e.expect(r'Failed to load minute\.img', mark, 8):
         # old minute only reloads minute.img: reset instead, boot picks up fw.img
         e.msg('installed minute cannot reload fw.img, resetting instead')
@@ -758,7 +818,7 @@ def cmd_flash_pico(args):
 
 TERM_HELP = """picoterm: Ctrl-] quit | Ctrl-T then:
       r  reset console (Pico NRST)      i  minute interactive console ('\\')
-      u  upload a file (asks for paths) q  quit
+      u  upload file(s), verified on SD q  quit
       h  this help                      Ctrl-T  send Ctrl-T
     control socket: %s"""
 
@@ -839,27 +899,52 @@ def cmd_term(args):
         print('\n--- exit', file=sys.stderr)
 
 
+term_upload_busy = threading.Lock()
+
+
+def default_sdpath(local):
+    if local.endswith('.ipx'):
+        return '%s/%s' % (PLUGIN_DIR, os.path.basename(local))
+    return 'sdmc:/%s' % os.path.basename(local)
+
+
 def term_upload(e):
+    """Ctrl-T u: same flow as `picoterm.py plugin --no-reset`, in the background."""
+    if term_upload_busy.locked():
+        e.msg('an upload is already running')
+        return
     try:
-        sys.stderr.write('\n--- local file: ')
-        local = input().strip()
-        if not local:
+        sys.stderr.write('\n--- local file(s): ')
+        files = [os.path.expanduser(f) for f in shlex.split(input())]
+        if not files:
             return
-        local = os.path.expanduser(local)
-        if local.endswith('.ipx'):
-            default = '%s/%s' % (PLUGIN_DIR, os.path.basename(local))
+        for f in files:
+            check_file(f)
+        if len(files) == 1:
+            default = default_sdpath(files[0])
+            sys.stderr.write('--- SD path [%s]: ' % default)
+            jobs = [(files[0], input().strip() or default)]
         else:
-            default = 'sdmc:/%s' % os.path.basename(local)
-        sys.stderr.write('--- SD path [%s]: ' % default)
-        sdpath = input().strip() or default
-        e.serve(sdpath, local)
-        e.msg('registered %s -> %s; sending `upload %s` (minute console must be open)'
-              % (local, sdpath, sdpath))
-        e.send(('upload %s\r' % sdpath).encode('latin-1'))
+            jobs = [(f, default_sdpath(f)) for f in files]
     except (EOFError, KeyboardInterrupt):
-        pass
+        return
     except Exception as ex:
         e.msg('upload: %s' % ex)
+        return
+
+    def worker():
+        with term_upload_busy:
+            try:
+                e.msg('opening minute console and uploading %d file(s); please don\'t type until done'
+                      % len(jobs))
+                enter_console(e, do_reset=False)
+                for local, sdpath in jobs:
+                    upload(e, local, sdpath)
+                e.msg('all uploads verified on SD; e.g. type `boot %d` to boot' % DEFAULT_BOOT_ENTRY)
+            except Exception as ex:
+                e.msg('UPLOAD FAILED: %s' % ex)
+
+    threading.Thread(target=worker, daemon=True).start()
 
 
 # --------------------------------------------------------------------------

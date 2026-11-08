@@ -36,10 +36,12 @@ loop:
 
     jmp y--, loop
     push block
-    pull noblock ; is the serial data valid (0xFFFFFFFF)
+    pull noblock ; is the serial data valid (0xFFFFFFFF)? empty FIFO -> X (0)
     mov y, osr
-    pull noblock ; the actual serial data
     jmp !y, invalid_reset
+    pull block   ; the actual serial data. Blocking: the CPU puts valid+data
+                 ; back to back, a noblock pull here could catch it in between
+                 ; and send a bogus 0x00, shifting the whole stream.
     set pins, 0xF
     jmp reset
 
