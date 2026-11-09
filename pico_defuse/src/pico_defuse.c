@@ -8,6 +8,31 @@
 #include "hardware/sync.h" 
 #include "pico_defuse.pio.h"
 
+#ifdef SERIAL_ONLY
+#include "pico/bootrom.h"
+#include "tusb.h"
+
+// Host-triggered actions, selected by setting the CDC baud rate:
+//   1200 -> reboot Pico into BOOTSEL (for flashing without the button)
+//   1201 -> pulse Wii U NRST (reset console, ISFShax boots minute again)
+#define HOST_BOOTSEL_BAUD (1200)
+#define HOST_RESET_BAUD   (1201)
+
+static volatile bool host_reset_requested = false;
+static volatile bool host_bootsel_requested = false;
+
+void tud_cdc_line_coding_cb(uint8_t itf, cdc_line_coding_t const* p_line_coding)
+{
+    (void)itf;
+    if (p_line_coding->bit_rate == HOST_BOOTSEL_BAUD) {
+        host_bootsel_requested = true;
+    }
+    else if (p_line_coding->bit_rate == HOST_RESET_BAUD) {
+        host_reset_requested = true;
+    }
+}
+#endif
+
 const uint PIN_DEBUGLED_BASE = 2;   // 8 consecutive pins
 const uint PIN_SERIALOUT_BASE = 18; // 4 consecutive pins tied together
 
@@ -519,13 +544,16 @@ void post_de_fuse()
 
 void wiiu_serial_monitor()
 {
-    if (!pio_sm_is_tx_fifo_full(pio, debug_gpio_monitor_parallel_sm))
+    // Each byte takes two FIFO words (valid marker + data), so only queue one
+    // when there is room for both. pio_sm_put() silently drops words on a full
+    // FIFO, which used to desync the marker/data pairing.
+    if (pio_sm_get_tx_fifo_level(pio, debug_gpio_monitor_parallel_sm) <= 2)
     {
         int char_in = getchar_timeout_us(0);
         if (char_in != PICO_ERROR_TIMEOUT && (char_in >= 0 && char_in <= 0xFF)) {
             //printf("[pico] char! %x\n", char_in);
-            pio_sm_put(pio, debug_gpio_monitor_parallel_sm, 0xFFFFFFFF); // serial data is valid
-            pio_sm_put(pio, debug_gpio_monitor_parallel_sm, serial_LUT[char_in]);
+            pio_sm_put_blocking(pio, debug_gpio_monitor_parallel_sm, 0xFFFFFFFF); // serial data is valid
+            pio_sm_put_blocking(pio, debug_gpio_monitor_parallel_sm, serial_LUT[char_in]);
         }
     }
     
@@ -639,7 +667,11 @@ void main()
     // Keep this delay so that if the MCU hangs for whatever reason, the user
     // can unplug the console and race to flash it w/o needing the program btn
     sleep_ms(3000);
+#ifdef SERIAL_ONLY
+    printf("hello there (serial-only, reset baud %d)\n", HOST_RESET_BAUD);
+#else
     printf("hello there\n");
+#endif
 
     slow_one_time_init();
 
@@ -660,6 +692,23 @@ void main()
     // State machines yayyyy
     while (1)
     {
+#ifdef SERIAL_ONLY
+        if (host_bootsel_requested) {
+            reset_usb_boot(0, 0);
+        }
+        if (host_reset_requested) {
+            host_reset_requested = false;
+            printf("[pico] host requested reset\n");
+            nrst_sense_set(false);
+            gpio_put(PIN_NRST, false);
+            sleep_ms(50);
+            gpio_put(PIN_NRST, true);
+            sleep_ms(1);
+            nrst_sense_set(true);
+            wiiu_state = WIIU_STATE_DEFUSED; // -> post_de_fuse() -> monitoring
+            next_wiiu_state = WIIU_STATE_DEFUSED;
+        }
+#endif
         switch (wiiu_state)
         {
         case WIIU_STATE_NORMAL_BOOT:
@@ -685,7 +734,12 @@ void main()
             break;
 
         case WIIU_STATE_NEEDS_DEFUSE:
+#ifdef SERIAL_ONLY
+            // ISFShax console: no de_Fuse needed, just monitor serial
+            next_wiiu_state = WIIU_STATE_DEFUSED;
+#else
             de_fuse();
+#endif
             //next_wiiu_state = WIIU_STATE_DEFUSED;
             break;
 
